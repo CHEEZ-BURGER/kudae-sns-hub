@@ -1,0 +1,163 @@
+import type { DraftPost, SourceSection } from '../types';
+
+const imageExtensions = /\.(?:jpe?g|png|webp|gif|avif|heic|svg)$/i;
+const manuscriptExtensions = /\.(?:hwp|hwpx|txt|docx)$/i;
+const headerPattern = /^(?:\*\*)?\s*(?:📩\s*)?\[([^\]\r\n]{1,40})\]\s*([^\r\n]*?)(?:\*\*)?\s*$/gmu;
+const creditPattern = /^(?:글|사진|취재|인포그래픽|카드뉴스|디자인|일러스트|영상|편집)\s*[|｜:].*$/gmu;
+const urlPattern = /https?:\/\/[^\s)\]]+/i;
+const naturalCollator = new Intl.Collator('ko-KR', { numeric: true, sensitivity: 'base' });
+
+export function isImageFile(name: string) {
+  return imageExtensions.test(name);
+}
+
+export function isManuscriptFile(name: string) {
+  return manuscriptExtensions.test(name);
+}
+
+export function naturalSortFiles<T extends { name: string }>(files: T[]): T[] {
+  return [...files].sort((a, b) => naturalCollator.compare(a.name, b.name));
+}
+
+export function extractGroupName(filename: string): string {
+  return filename
+    .replace(/^.*[\\/]/, '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/^\s*\d+\s*호\s*/u, '')
+    .replace(/[\s_-]*\d+\s*$/u, '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function groupImages(files: File[]): Map<string, File[]> {
+  const groups = new Map<string, File[]>();
+  for (const file of naturalSortFiles(files.filter((item) => isImageFile(item.name)))) {
+    const group = extractGroupName(file.name) || '이름 없는 이미지';
+    groups.set(group, [...(groups.get(group) ?? []), file]);
+  }
+  return groups;
+}
+
+function cleanupExtractedText(text: string) {
+  return text
+    .replace(/\u00a0/g, ' ')
+    .replace(/&#x20;|&nbsp;/gi, ' ')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function splitManuscript(input: string): SourceSection[] {
+  const text = cleanupExtractedText(input);
+  const matches = [...text.matchAll(headerPattern)];
+  if (!matches.length) return [];
+
+  return matches.map((match, index) => {
+    const start = match.index ?? 0;
+    const end = matches[index + 1]?.index ?? text.length;
+    const raw = text.slice(start, end).trim().replace(/^\*\*|\*\*$/g, '');
+    const category = match[1].trim();
+    const title = match[2].replace(/\*\*/g, '').trim() || `[${category}]`;
+    const articleUrl = raw.match(urlPattern)?.[0] ?? '';
+    const credits = [...raw.matchAll(creditPattern)].map((item) => item[0].trim()).join('\n');
+    const headerLine = match[0].trim();
+    const body = raw
+      .replace(headerLine, '')
+      .replace(articleUrl, '')
+      .replace(creditPattern, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return {
+      id: `section-${index + 1}`,
+      header: `[${category}] ${title}`.trim(),
+      category,
+      title,
+      body,
+      articleUrl,
+      credits,
+      raw,
+    };
+  });
+}
+
+const aliases: Record<string, string[]> = {
+  석탑: ['석탑', '주간뉴스레터', '뉴스레터'],
+  지속가능: ['지속가능', '탄소중립', '온실가스', '배출량'],
+  포스트몽골: ['포스트몽골', '북원', '대칸', '토구스', '몽골'],
+  덕소농장: ['덕소농장', '농장', '주택공급지'],
+  뉴라이트: ['뉴라이트', '사설', '재조명'],
+};
+
+function normalize(value: string) {
+  return value.toLocaleLowerCase('ko-KR').replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+function tokens(value: string) {
+  return (value.toLocaleLowerCase('ko-KR').match(/[가-힣]{2,}|[a-z0-9]{3,}/g) ?? [])
+    .filter((token) => !['보도', '기사', '카드뉴스', '포토뉴스', '사설'].includes(token));
+}
+
+export function matchScore(groupName: string, section: SourceSection): number {
+  const group = normalize(groupName);
+  const sectionText = normalize(`${section.category} ${section.title} ${section.raw.slice(0, 500)}`);
+  let score = 0;
+  for (const [key, words] of Object.entries(aliases)) {
+    if (group.includes(normalize(key))) {
+      const hitCount = words.filter((word) => sectionText.includes(normalize(word))).length;
+      score += Math.min(0.82, hitCount * 0.24);
+    }
+  }
+  const groupTokens = tokens(groupName);
+  const overlap = groupTokens.filter((token) => sectionText.includes(normalize(token))).length;
+  score += groupTokens.length ? (overlap / groupTokens.length) * 0.55 : 0;
+  if (group.includes('사설') && normalize(section.category).includes('사설')) score += 0.3;
+  if (group.includes('포토뉴스') && normalize(section.category).includes('포토뉴스')) score += 0.3;
+  return Math.min(1, Number(score.toFixed(2)));
+}
+
+export function bestSectionMatch(groupName: string, sections: SourceSection[]) {
+  const ranked = sections
+    .map((section) => ({ section, score: matchScore(groupName, section) }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  if (!best || best.score < 0.2) return { section: null, confidence: 0 };
+  return { section: best.section, confidence: best.score };
+}
+
+export function buildDraftPosts(groups: Map<string, File[]>, sections: SourceSection[]): DraftPost[] {
+  return [...groups.entries()].map(([groupName, files]) => {
+    const { section, confidence } = bestSectionMatch(groupName, sections);
+    return {
+      id: crypto.randomUUID(),
+      groupName,
+      sectionId: section?.id ?? '',
+      confidence,
+      title: section?.title ?? groupName,
+      body: section?.body ?? '',
+      articleUrl: section?.articleUrl ?? '',
+      credits: section?.credits ?? '',
+      assets: files.map((file, index) => ({
+        id: crypto.randomUUID(),
+        file,
+        previewUrl: URL.createObjectURL(file),
+        order: index,
+      })),
+    };
+  });
+}
+
+export function confidenceLabel(value: number) {
+  if (value >= 0.7) return '높음';
+  if (value >= 0.4) return '보통';
+  return '확인 필요';
+}
+
+export function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
+  return `${(value / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
+}

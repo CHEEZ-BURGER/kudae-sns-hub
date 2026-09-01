@@ -1,0 +1,36 @@
+{
+  "name": "kudae-sns-hub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "oxlint src supabase"
+  },
+  "dependencies": {
+    "@ssabrojs/hwpxjs": "^0.4.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.544.0",
+    "mammoth": "^1.10.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^22.18.6",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "oxlint": "^1.18.0",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7",
+    "vitest": "^3.2.4"
+  }
+}
