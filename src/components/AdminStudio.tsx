@@ -6,7 +6,7 @@ import { AppHeader } from './AppHeader';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { expandFiles, extractManuscript, filesFromDataTransfer, partitionSupportedFiles } from '../lib/document-parser';
 import { buildDraftPosts, confidenceLabel, formatBytes, groupMedia, isVideoFile, splitManuscript } from '../lib/workflow';
-import { listAdminPublications, publishDistribution } from '../lib/publish';
+import { deletePublication, listAdminPublications, publishDistribution } from '../lib/publish';
 
 type AdminStudioProps = { session: Session | null; demoMode?: boolean };
 type Stage = 'upload' | 'edit' | 'publishing' | 'done';
@@ -58,6 +58,16 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
     if (demoMode) return;
     listAdminPublications().then((data) => setRecent(data as Array<Record<string, string | null>>)).catch((error) => setMessage(error.message));
   }, [demoMode, stage]);
+
+  async function removePublication(publicationId: string) {
+    try {
+      await deletePublication(publicationId);
+      setRecent((current) => current.filter((item) => item.id !== publicationId));
+      setMessage('');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '배포 삭제에 실패했습니다.');
+    }
+  }
 
   async function receiveFiles(files: File[]) {
     if (!files.length) return;
@@ -184,7 +194,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
         {stage === 'publishing' && <PublishingStage progress={progress}/>} 
         {stage === 'done' && <DoneStage shareUrl={shareUrl} reset={()=>{ setStage('upload'); setPosts([]); setSections([]); setPendingMedia([]); setPasteText(''); }}/>}
 
-        {stage === 'upload' && recent.length > 0 && <RecentPublications data={recent}/>} 
+        {stage === 'upload' && recent.length > 0 && <RecentPublications data={recent} onDelete={removePublication}/>}
       </main>
     </div>
   );
@@ -258,7 +268,14 @@ function DoneStage({ shareUrl, reset }: { shareUrl:string; reset:()=>void }) {
   return <section className="panel mx-auto max-w-2xl p-7 text-center sm:p-10"><span className="success-icon"><Check/></span><p className="eyebrow mt-5">배포 완료</p><h2 className="mt-2 text-2xl font-black">기자들에게 이 링크를 보내세요.</h2><p className="mt-2 text-sm text-muted">링크를 받은 사람은 로그인 없이 이 배포만 읽을 수 있습니다.</p><div className="share-box mt-7"><Link2/><input readOnly value={shareUrl}/><button onClick={copy}>{copied?'복사됨':'링크 복사'}</button></div><div className="mt-6 flex flex-wrap justify-center gap-2"><a className="button secondary" href={`#/d/${shareUrl.split('/#/d/')[1]}`}>기자 화면 열기</a><button className="button ghost" onClick={reset}>새 배포 만들기</button></div></section>;
 }
 
-function RecentPublications({ data }: { data:Array<Record<string,string|null>> }) {
+function RecentPublications({ data, onDelete }: { data:Array<Record<string,string|null>>; onDelete:(id:string)=>Promise<void> }) {
+  const [deleting, setDeleting] = useState('');
   async function copy(token:string){await navigator.clipboard.writeText(`${location.origin}${location.pathname}#/d/${token}`);}
-  return <section className="mt-10"><div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-black">최근 배포</h2><span className="text-xs text-muted">{data.length}건</span></div><div className="panel divide-y divide-line overflow-hidden">{data.slice(0,5).map((item)=><div className="flex items-center justify-between gap-3 p-4" key={item.id}><div className="min-w-0"><b className="block truncate text-sm">{item.title}</b><span className="text-xs text-muted">{item.issue_number} · {item.published_at ? new Date(item.published_at).toLocaleString('ko-KR') : '작성 중'}</span></div>{item.share_token&&<button className="button tiny ghost" onClick={()=>copy(item.share_token!)}><Clipboard/>링크 복사</button>}</div>)}</div></section>;
+  async function remove(id:string,title:string){
+    if(!window.confirm(`“${title}” 배포와 원본 파일을 삭제할까요?`)) return;
+    setDeleting(id);
+    await onDelete(id);
+    setDeleting('');
+  }
+  return <section className="mt-10"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-black">최근 배포</h2><p className="mt-1 text-xs text-muted">최신 3개만 보관하며 새 배포가 추가되면 가장 오래된 자료를 자동 삭제합니다.</p></div><span className="text-xs text-muted">{data.length}건</span></div><div className="panel divide-y divide-line overflow-hidden">{data.slice(0,3).map((item)=><div className="flex items-center justify-between gap-3 p-4" key={item.id}><div className="min-w-0"><b className="block truncate text-sm">{item.title}</b><span className="text-xs text-muted">{item.issue_number} · {item.published_at ? new Date(item.published_at).toLocaleString('ko-KR') : '작성 중'}</span></div><div className="flex shrink-0 gap-2">{item.share_token&&<button className="button tiny ghost" onClick={()=>copy(item.share_token!)}><Clipboard/>링크 복사</button>}<button className="button tiny danger" disabled={deleting===item.id} onClick={()=>remove(item.id!,item.title??'배포')}><Trash2/>{deleting===item.id?'삭제 중':'삭제'}</button></div></div>)}</div></section>;
 }

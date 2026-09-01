@@ -1,3 +1,4 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css');
 @import 'tailwindcss';
 
 @theme {
@@ -11,7 +12,8 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; background: #fffafb; color: #1d1d1d; font-family: Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif; }
+:root { font-family: 'Pretendard Variable', Pretendard, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; }
+body { margin: 0; min-width: 320px; background: #fffafb; color: #1d1d1d; font-family: inherit; }
 button, input, textarea, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible { outline: 3px solid rgba(255,32,92,.25); outline-offset: 2px; }
@@ -26,7 +28,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .icon-well { display: grid; place-items: center; width: 3.7rem; height: 3.7rem; border-radius: 1rem; background: #ffe8ef; color: #ff205c; }
 .file-chip { display: flex; align-items: center; gap: .45rem; border-radius: .65rem; background: #fffafb; padding: .65rem .7rem; }
 .panel { border: 1px solid #f0dfe5; border-radius: 1rem; background: white; box-shadow: 0 8px 28px rgba(29,29,29,.04); }
-.brand-mark-shell { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 auto; place-items: center; overflow: hidden; border: 1px solid #f0dfe5; border-radius: .72rem; background: #fffafb; }
+.brand-mark-shell { display: grid; width: 2.35rem; height: 2.35rem; flex: 0 0 auto; place-items: center; overflow: hidden; border: 0; border-radius: .72rem; background: transparent; }
 .brand-mark-shell img { width: 82%; height: 82%; object-fit: contain; }
 .login-brand-panel { background: #ff205c; }
 .login-mark-shell { display: grid; width: 3.1rem; height: 3.1rem; place-items: center; border-radius: .9rem; background: #fffafb; box-shadow: 0 10px 28px rgba(29,29,29,.12); }
@@ -48,6 +50,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .button.secondary:hover:not(:disabled) { background: #ffe8ef; }
 .button.ghost { border-color: #f0dfe5; background: white; color: #1d1d1d; }
 .button.ghost:hover:not(:disabled) { background: #f3f1ed; }
+.button.danger { border-color: #efc7c7; background: white; color: #a62323; }
+.button.danger:hover:not(:disabled) { background: #fff1f1; border-color: #df9999; }
 .button.tiny { min-height: 2rem; border-radius: .55rem; padding: .42rem .65rem; font-size: .68rem; }
 .text-button { display: inline-flex; align-items: center; gap: .45rem; border: 0; background: transparent; color: #6d6963; font-size: .75rem; font-weight: 800; cursor: pointer; }
 .text-button:hover { color: #ff205c; }

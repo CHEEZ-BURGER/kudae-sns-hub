@@ -1,4 +1,5 @@
 import type { DraftPost } from '../types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { resizeImage } from './image-tools';
 import { requireSupabase } from './supabase';
 import { originalStoragePath } from './storage-path';
@@ -11,6 +12,41 @@ export type PublishInput = {
   expiresAt?: string;
   existingPublicationId?: string;
 };
+
+type PublicationRow = { id: string; created_at: string };
+
+export function publicationIdsToPrune(publications: PublicationRow[], keep = 3) {
+  return [...publications]
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(Math.max(0, keep))
+    .map((publication) => publication.id);
+}
+
+async function deletePublicationWithClient(client: SupabaseClient, publicationId: string) {
+  const { data: posts, error: postsError } = await client.from('posts').select('id').eq('publication_id', publicationId);
+  if (postsError) throw postsError;
+  const postIds = (posts ?? []).map((post) => post.id);
+  const { data: assets, error: assetsError } = postIds.length
+    ? await client.from('assets').select('original_path, thumbnail_path, optimized_path').in('post_id', postIds)
+    : { data: [], error: null };
+  if (assetsError) throw assetsError;
+
+  const paths = [...new Set((assets ?? []).flatMap((asset) => [asset.original_path, asset.thumbnail_path, asset.optimized_path].filter(Boolean) as string[]))];
+  if (paths.length) {
+    const { error: storageError } = await client.storage.from('sns-assets').remove(paths);
+    if (storageError) throw storageError;
+  }
+  const { error: deleteError } = await client.from('publications').delete().eq('id', publicationId);
+  if (deleteError) throw deleteError;
+}
+
+async function pruneOldPublications(client: SupabaseClient, keep = 3) {
+  const { data, error } = await client.from('publications').select('id, created_at').order('created_at', { ascending: false });
+  if (error) throw error;
+  for (const publicationId of publicationIdsToPrune((data ?? []) as PublicationRow[], keep)) {
+    await deletePublicationWithClient(client, publicationId);
+  }
+}
 
 export async function sha256(value: string) {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
@@ -111,6 +147,9 @@ export async function publishDistribution(input: PublishInput, onProgress?: (mes
         processed += 1;
       }
     }
+    onProgress?.('오래된 배포 정리 중', 99);
+    try { await pruneOldPublications(client, 3); }
+    catch (cleanupError) { console.error('오래된 배포 자동 정리에 실패했습니다.', cleanupError); }
     onProgress?.('배포 링크 생성 완료', 100);
     return { publicationId, token: input.existingPublicationId ? null : token };
   } catch (error) {
@@ -120,6 +159,13 @@ export async function publishDistribution(input: PublishInput, onProgress?: (mes
     }
     throw error;
   }
+}
+
+export async function deletePublication(publicationId: string) {
+  const client = requireSupabase();
+  const { data } = await client.auth.getUser();
+  if (!data.user) throw new Error('관리자 로그인이 필요합니다.');
+  await deletePublicationWithClient(client, publicationId);
 }
 
 export async function listAdminPublications() {
