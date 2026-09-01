@@ -1,6 +1,7 @@
 import type { DraftPost } from '../types';
 import { resizeImage } from './image-tools';
 import { requireSupabase } from './supabase';
+import { originalStoragePath } from './storage-path';
 
 export type PublishInput = {
   issueNumber: string;
@@ -75,9 +76,8 @@ export async function publishDistribution(input: PublishInput, onProgress?: (mes
 
       for (let assetIndex = 0; assetIndex < post.assets.length; assetIndex += 1) {
         const asset = post.assets[assetIndex];
-        const safeName = asset.file.name.replace(/[^\p{L}\p{N}._-]/gu, '_');
         const root = `${userData.user.id}/${publicationId}/${postId}/${asset.id}`;
-        const originalPath = `${root}/original-${safeName}`;
+        const originalPath = originalStoragePath(root, asset.file.name, asset.file.type);
         const optimizedPath = `${root}/optimized.jpg`;
         const thumbPath = `${root}/thumb.jpg`;
         onProgress?.(`${post.title} · ${assetIndex + 1}번째 이미지 처리 중`, Math.round((processed / Math.max(1, totalAssets)) * 100));

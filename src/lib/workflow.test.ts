@@ -44,9 +44,18 @@ describe('원고 분할', () => {
     expect(sections[1].credits).toContain('유지원');
   });
 
-  it('본문에는 URL과 크레딧을 중복 포함하지 않는다', () => {
+  it('본문에서 기사 URL만 분리하고 크레딧은 본문에 포함한다', () => {
     expect(sections[1].body).not.toContain('https://');
-    expect(sections[1].body).not.toContain('글 |');
+    expect(sections[1].body).toContain('글 | 유지원');
+  });
+
+  it('뉴스레터 안의 기사 목록을 별도 원고 섹션으로 잘못 나누지 않는다', () => {
+    const hwpExtract = `2045호 카드뉴스 (月)\n\n📩 [주간 뉴스레터 석탑] 정기고연전 폐막제\n\n탄소중립 반환점\n몸짓으로 말하던 발레리나\n[사설] 재조명 내세우는 뉴라이트 끊어내야\n\n전문은 학교 메일에서 확인해 보세요!\n\n\n[보도] 탄소중립 반환점\n\n기사 본문\n\n글 | 유지원 기자\n\n\n[사설] 재조명 내세우는 뉴라이트 끊어내야\n\n사설 전체 본문`;
+    const parsed = splitManuscript(hwpExtract);
+    expect(parsed).toHaveLength(3);
+    expect(parsed[0].body).toContain('[사설] 재조명');
+    expect(parsed[2].body).toBe('사설 전체 본문');
+    expect(bestSectionMatch('뉴라이트 사설', parsed).section?.title).toBe('재조명 내세우는 뉴라이트 끊어내야');
   });
 });
 

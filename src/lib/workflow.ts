@@ -2,7 +2,10 @@ import type { DraftPost, SourceSection } from '../types';
 
 const imageExtensions = /\.(?:jpe?g|png|webp|gif|avif|heic|svg)$/i;
 const manuscriptExtensions = /\.(?:hwp|hwpx|txt|docx)$/i;
-const headerPattern = /^(?:\*\*)?\s*(?:📩\s*)?\[([^\]\r\n]{1,40})\]\s*([^\r\n]*?)(?:\*\*)?\s*$/gmu;
+// Real section headers in newsroom HWP files are separated by a blank line.
+// Requiring that boundary prevents newsletter teaser lines such as
+// "[사설] ..." from being mistaken for a second full article section.
+const headerPattern = /(?:^|\n{2,})(?:\*\*)?[ \t]*(?:📩[ \t]*)?\[([^\]\r\n]{1,40})\][ \t]*([^\r\n]*?)(?:\*\*)?[ \t]*(?=\n|$)/gu;
 const creditPattern = /^(?:글|사진|취재|인포그래픽|카드뉴스|디자인|일러스트|영상|편집)\s*[|｜:].*$/gmu;
 const urlPattern = /https?:\/\/[^\s)\]]+/i;
 const naturalCollator = new Intl.Collator('ko-KR', { numeric: true, sensitivity: 'base' });
@@ -51,22 +54,29 @@ function cleanupExtractedText(text: string) {
 
 export function splitManuscript(input: string): SourceSection[] {
   const text = cleanupExtractedText(input);
-  const matches = [...text.matchAll(headerPattern)];
+  const matches = [...text.matchAll(headerPattern)].map((match) => {
+    const matchedText = match[0];
+    const leadingBreaks = matchedText.match(/^\n+/)?.[0].length ?? 0;
+    return {
+      start: (match.index ?? 0) + leadingBreaks,
+      category: match[1].trim(),
+      title: match[2].replace(/\*\*/g, '').trim(),
+      headerLine: matchedText.slice(leadingBreaks).trim(),
+    };
+  });
   if (!matches.length) return [];
 
   return matches.map((match, index) => {
-    const start = match.index ?? 0;
-    const end = matches[index + 1]?.index ?? text.length;
-    const raw = text.slice(start, end).trim().replace(/^\*\*|\*\*$/g, '');
-    const category = match[1].trim();
-    const title = match[2].replace(/\*\*/g, '').trim() || `[${category}]`;
+    const end = matches[index + 1]?.start ?? text.length;
+    const raw = text.slice(match.start, end).trim().replace(/^\*\*|\*\*$/g, '');
+    const category = match.category;
+    const title = match.title || `[${category}]`;
     const articleUrl = raw.match(urlPattern)?.[0] ?? '';
     const credits = [...raw.matchAll(creditPattern)].map((item) => item[0].trim()).join('\n');
-    const headerLine = match[0].trim();
+    const headerLine = match.headerLine;
     const body = raw
       .replace(headerLine, '')
       .replace(articleUrl, '')
-      .replace(creditPattern, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
@@ -113,8 +123,10 @@ export function matchScore(groupName: string, section: SourceSection): number {
   const groupTokens = tokens(groupName);
   const overlap = groupTokens.filter((token) => sectionText.includes(normalize(token))).length;
   score += groupTokens.length ? (overlap / groupTokens.length) * 0.55 : 0;
-  if (group.includes('사설') && normalize(section.category).includes('사설')) score += 0.3;
-  if (group.includes('포토뉴스') && normalize(section.category).includes('포토뉴스')) score += 0.3;
+  const category = normalize(section.category);
+  if (group.includes('사설')) score = category.includes('사설') ? score + 0.45 : score * 0.35;
+  if (group.includes('포토뉴스')) score = category.includes('포토뉴스') ? score + 0.45 : score * 0.35;
+  if (group.includes('석탑') && (category.includes('뉴스레터') || category.includes('석탑'))) score += 0.35;
   return Math.min(1, Number(score.toFixed(2)));
 }
 
@@ -138,7 +150,9 @@ export function buildDraftPosts(groups: Map<string, File[]>, sections: SourceSec
       title: section?.title ?? groupName,
       body: section?.body ?? '',
       articleUrl: section?.articleUrl ?? '',
-      credits: section?.credits ?? '',
+      // Newsroom copy treats credit lines as part of the post body. Keep the
+      // separate field empty to avoid duplicating them on copy/download.
+      credits: '',
       assets: files.map((file, index) => ({
         id: crypto.randomUUID(),
         file,

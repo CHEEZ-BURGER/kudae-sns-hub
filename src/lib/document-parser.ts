@@ -36,9 +36,19 @@ export async function extractManuscript(file: File): Promise<string> {
     const result = await mammoth.extractRawText({ arrayBuffer: buffer });
     return result.value;
   }
-  if (extension === 'hwp' || extension === 'hwpx') {
+  if (extension === 'hwp') {
     const { hwpToText } = await import('@ssabrojs/hwpxjs/browser');
-    return hwpToText(new Uint8Array(buffer));
+    const text = await hwpToText(new Uint8Array(buffer));
+    if (!text.trim()) throw new Error('HWP에서 본문을 찾지 못했습니다. TXT로 저장하거나 원고를 직접 붙여넣어 주세요.');
+    return text;
+  }
+  if (extension === 'hwpx') {
+    const { HwpxReader } = await import('@ssabrojs/hwpxjs/browser');
+    const reader = new HwpxReader();
+    await reader.loadFromArrayBuffer(buffer);
+    const text = await reader.extractText();
+    if (!text.trim()) throw new Error('HWPX에서 본문을 찾지 못했습니다. 원고를 직접 붙여넣어 주세요.');
+    return text;
   }
   throw new Error('지원하지 않는 원고 형식입니다.');
 }

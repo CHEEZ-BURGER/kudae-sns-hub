@@ -6,4 +6,8 @@ declare module 'mammoth/mammoth.browser' {
 
 declare module '@ssabrojs/hwpxjs/browser' {
   export function hwpToText(data: Uint8Array, options?: Record<string, unknown>): Promise<string>;
+  export class HwpxReader {
+    loadFromArrayBuffer(buffer: ArrayBuffer): Promise<void>;
+    extractText(): Promise<string>;
+  }
 }
