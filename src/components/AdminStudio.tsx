@@ -1,12 +1,12 @@
 import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
-import { AlertCircle, Archive, ArrowDown, ArrowUp, Check, ChevronRight, CirclePlus, Clipboard, FileArchive, FileText, GripVertical, Images, Link2, LoaderCircle, Plus, Send, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
+import { AlertCircle, Archive, ArrowDown, ArrowUp, Check, ChevronRight, CirclePlus, Clipboard, FileArchive, FileText, GripVertical, Images, Link2, LoaderCircle, Pencil, Plus, Send, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
 import type { DraftPost, SourceSection } from '../types';
 import { AppHeader } from './AppHeader';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { expandFiles, extractManuscript, filesFromDataTransfer, partitionSupportedFiles } from '../lib/document-parser';
 import { buildDraftPosts, confidenceLabel, formatBytes, groupMedia, isVideoFile, splitManuscript } from '../lib/workflow';
-import { deletePublication, listAdminPublications, publishDistribution } from '../lib/publish';
+import { deletePublication, listAdminPublications, loadAdminPublication, publishDistribution } from '../lib/publish';
 
 type AdminStudioProps = { session: Session | null; demoMode?: boolean };
 type Stage = 'upload' | 'edit' | 'publishing' | 'done';
@@ -50,6 +50,8 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
   const [shareUrl, setShareUrl] = useState('');
   const [dragAssetId, setDragAssetId] = useState('');
   const [recent, setRecent] = useState<Array<Record<string, string | null>>>([]);
+  const [editingPublicationId, setEditingPublicationId] = useState('');
+  const [loadingEditId, setLoadingEditId] = useState('');
   const [showAdminUsers, setShowAdminUsers] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
@@ -67,6 +69,30 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '배포 삭제에 실패했습니다.');
     }
+  }
+
+  async function editPublication(publicationId: string) {
+    setLoadingEditId(publicationId); setMessage('');
+    try {
+      const editable = await loadAdminPublication(publicationId);
+      setIssueNumber(editable.issueNumber);
+      setPublicationTitle(editable.title);
+      setPosts(editable.posts);
+      setSections([]);
+      setPendingMedia(editable.posts.flatMap((post) => post.assets.map((asset) => asset.file)));
+      setPasteText(''); setWarnings([]); setShowPaste(false);
+      setEditingPublicationId(editable.id);
+      setShareUrl(`${location.origin}${location.pathname}#/d/${editable.shareToken}`);
+      setStage('edit');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '배포 내용을 불러오지 못했습니다.');
+    } finally { setLoadingEditId(''); }
+  }
+
+  function resetStudio() {
+    posts.flatMap((post) => post.assets).forEach((asset) => { if (asset.previewUrl.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl); });
+    setStage('upload'); setPosts([]); setSections([]); setPendingMedia([]); setPasteText('');
+    setEditingPublicationId(''); setShareUrl(''); setWarnings([]); setMessage('');
   }
 
   async function receiveFiles(files: File[]) {
@@ -157,7 +183,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
     if (posts.some((post) => !post.title.trim() || !post.body.trim())) { setMessage('제목이나 본문이 비어 있는 게시물을 확인해 주세요.'); return; }
     setStage('publishing'); setMessage('');
     try {
-      const result = await publishDistribution({ issueNumber, title: publicationTitle, posts }, (label, value) => setProgress({ label, value }));
+      const result = await publishDistribution({ issueNumber, title: publicationTitle, posts, existingPublicationId: editingPublicationId || undefined }, (label, value) => setProgress({ label, value }));
       if (!result.token) throw new Error('공유 토큰 생성에 실패했습니다.');
       setShareUrl(`${location.origin}${location.pathname}#/d/${result.token}`);
       setStage('done');
@@ -184,17 +210,17 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
         {showAdminUsers && <AdminUsersPanel onClose={()=>setShowAdminUsers(false)}/>} 
         <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-          <div><p className="eyebrow">{stage === 'upload' ? '새 배포 만들기' : publicationTitle}</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] md:text-4xl">{stage === 'upload' ? '파일 한 번, 배포 준비 끝.' : stage === 'done' ? '배포 링크가 준비됐습니다.' : '자동 매칭을 확인해 주세요.'}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{stage === 'upload' ? '카드뉴스 이미지·영상 폴더와 원고를 올리면 게시물별 미디어와 본문을 자동으로 연결합니다.' : stage === 'edit' ? `${posts.length}개 게시물 · 미디어 ${posts.flatMap((post)=>post.assets).length}개 · ${formatBytes(totalBytes)}` : '기자는 이 링크에서 원본 미디어와 본문을 바로 가져갈 수 있습니다.'}</p></div>
+          <div><p className="eyebrow">{stage === 'upload' ? '새 배포 만들기' : publicationTitle}</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] md:text-4xl">{stage === 'upload' ? '파일 한 번, 배포 준비 끝.' : stage === 'done' ? (editingPublicationId ? '배포 내용을 수정했습니다.' : '배포 링크가 준비됐습니다.') : (editingPublicationId ? '배포 내용을 수정해 주세요.' : '자동 매칭을 확인해 주세요.')}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{stage === 'upload' ? '카드뉴스 이미지·영상 폴더와 원고를 올리면 게시물별 미디어와 본문을 자동으로 연결합니다.' : stage === 'edit' ? `${posts.length}개 게시물 · 미디어 ${posts.flatMap((post)=>post.assets).length}개 · ${formatBytes(totalBytes)}` : '기자는 기존 링크에서 수정된 내용을 바로 볼 수 있습니다.'}</p></div>
           <Stepper stage={stage}/>
         </div>
 
         {message && <div className="error-banner mb-5"><AlertCircle/><p>{message}</p><button onClick={()=>setMessage('')}><X/></button></div>}
         {stage === 'upload' && <UploadStage busy={busy} dragging={dragging} setDragging={setDragging} drop={drop} fileInput={fileInput} directoryInput={directoryInput} receiveFiles={receiveFiles} warnings={warnings} showPaste={showPaste} setShowPaste={setShowPaste} pasteText={pasteText} setPasteText={setPasteText} analyse={()=>analyse()} startSample={startSample}/>} 
-        {stage === 'edit' && <EditStage issueNumber={issueNumber} setIssueNumber={setIssueNumber} publicationTitle={publicationTitle} setPublicationTitle={setPublicationTitle} posts={posts} sections={sections} updatePost={updatePost} selectSection={selectSection} setDragAssetId={setDragAssetId} reorderAsset={reorderAsset} moveAsset={moveAsset} setPosts={setPosts} addPost={addPost} publish={publish} reset={()=>setStage('upload')} demoMode={demoMode}/>} 
+        {stage === 'edit' && <EditStage issueNumber={issueNumber} setIssueNumber={setIssueNumber} publicationTitle={publicationTitle} setPublicationTitle={setPublicationTitle} posts={posts} sections={sections} updatePost={updatePost} selectSection={selectSection} setDragAssetId={setDragAssetId} reorderAsset={reorderAsset} moveAsset={moveAsset} setPosts={setPosts} addPost={addPost} publish={publish} reset={resetStudio} demoMode={demoMode} editing={Boolean(editingPublicationId)}/>}
         {stage === 'publishing' && <PublishingStage progress={progress}/>} 
-        {stage === 'done' && <DoneStage shareUrl={shareUrl} reset={()=>{ setStage('upload'); setPosts([]); setSections([]); setPendingMedia([]); setPasteText(''); }}/>}
+        {stage === 'done' && <DoneStage shareUrl={shareUrl} reset={resetStudio} editing={Boolean(editingPublicationId)}/>}
 
-        {stage === 'upload' && recent.length > 0 && <RecentPublications data={recent} onDelete={removePublication}/>}
+        {stage === 'upload' && recent.length > 0 && <RecentPublications data={recent} onDelete={removePublication} onEdit={editPublication} loadingEditId={loadingEditId}/>}
       </main>
     </div>
   );
@@ -240,7 +266,7 @@ type EditProps = {
   issueNumber: string; setIssueNumber: (value:string)=>void; publicationTitle:string; setPublicationTitle:(value:string)=>void;
   posts: DraftPost[]; sections: SourceSection[]; updatePost:(id:string,patch:Partial<DraftPost>)=>void; selectSection:(postId:string,sectionId:string)=>void;
   setDragAssetId:(id:string)=>void; reorderAsset:(postId:string,targetId:string)=>void; moveAsset:(postId:string,assetId:string,direction:-1|1)=>void;
-  setPosts:React.Dispatch<React.SetStateAction<DraftPost[]>>; addPost:()=>void; publish:()=>void; reset:()=>void; demoMode:boolean;
+  setPosts:React.Dispatch<React.SetStateAction<DraftPost[]>>; addPost:()=>void; publish:()=>void; reset:()=>void; demoMode:boolean; editing:boolean;
 };
 
 function EditStage(props: EditProps) {
@@ -254,7 +280,7 @@ function EditStage(props: EditProps) {
       </div>
     </article>)}</div>
     <button className="add-post mt-5" onClick={props.addPost}><CirclePlus/>게시물 직접 추가</button>
-    <div className="sticky-actions"><button className="button ghost" onClick={props.reset}>처음부터</button><button className="button primary" onClick={props.publish} title={props.demoMode?'Supabase 연결 후 사용 가능':''}><Send/>{props.demoMode?'배포 설정 필요':'배포하기'}</button></div>
+    <div className="sticky-actions"><button className="button ghost" onClick={props.reset}>{props.editing?'수정 취소':'처음부터'}</button><button className="button primary" onClick={props.publish} title={props.demoMode?'Supabase 연결 후 사용 가능':''}><Send/>{props.demoMode?'배포 설정 필요':props.editing?'수정 내용 저장':'배포하기'}</button></div>
   </>;
 }
 
@@ -262,13 +288,13 @@ function PublishingStage({ progress }: { progress: {label:string;value:number} }
   return <section className="panel mx-auto max-w-xl p-8 text-center sm:p-12"><LoaderCircle className="mx-auto animate-spin text-crimson" size={40}/><h2 className="mt-5 text-xl font-black">원본 파일을 안전하게 올리고 있습니다.</h2><p className="mt-2 text-sm text-muted">영상은 파일 크기에 따라 시간이 더 걸릴 수 있으니 창을 닫지 말아 주세요.</p><div className="progress mt-7"><span style={{width:`${progress.value}%`}}/></div><div className="mt-3 flex justify-between text-xs text-muted"><span>{progress.label}</span><b>{progress.value}%</b></div></section>;
 }
 
-function DoneStage({ shareUrl, reset }: { shareUrl:string; reset:()=>void }) {
+function DoneStage({ shareUrl, reset, editing }: { shareUrl:string; reset:()=>void; editing:boolean }) {
   const [copied,setCopied]=useState(false);
   async function copy(){await navigator.clipboard.writeText(shareUrl);setCopied(true);setTimeout(()=>setCopied(false),1600);}
-  return <section className="panel mx-auto max-w-2xl p-7 text-center sm:p-10"><span className="success-icon"><Check/></span><p className="eyebrow mt-5">배포 완료</p><h2 className="mt-2 text-2xl font-black">기자들에게 이 링크를 보내세요.</h2><p className="mt-2 text-sm text-muted">링크를 받은 사람은 로그인 없이 이 배포만 읽을 수 있습니다.</p><div className="share-box mt-7"><Link2/><input readOnly value={shareUrl}/><button onClick={copy}>{copied?'복사됨':'링크 복사'}</button></div><div className="mt-6 flex flex-wrap justify-center gap-2"><a className="button secondary" href={`#/d/${shareUrl.split('/#/d/')[1]}`}>기자 화면 열기</a><button className="button ghost" onClick={reset}>새 배포 만들기</button></div></section>;
+  return <section className="panel mx-auto max-w-2xl p-7 text-center sm:p-10"><span className="success-icon"><Check/></span><p className="eyebrow mt-5">{editing?'수정 완료':'배포 완료'}</p><h2 className="mt-2 text-2xl font-black">{editing?'기존 배포 링크에 수정 내용이 반영됐습니다.':'기자들에게 이 링크를 보내세요.'}</h2><p className="mt-2 text-sm text-muted">{editing?'기자에게 링크를 다시 보낼 필요 없이 같은 주소를 계속 사용합니다.':'링크를 받은 사람은 로그인 없이 이 배포만 읽을 수 있습니다.'}</p><div className="share-box mt-7"><Link2/><input readOnly value={shareUrl}/><button onClick={copy}>{copied?'복사됨':'링크 복사'}</button></div><div className="mt-6 flex flex-wrap justify-center gap-2"><a className="button secondary" href={`#/d/${shareUrl.split('/#/d/')[1]}`}>기자 화면 열기</a><button className="button ghost" onClick={reset}>배포 목록으로</button></div></section>;
 }
 
-function RecentPublications({ data, onDelete }: { data:Array<Record<string,string|null>>; onDelete:(id:string)=>Promise<void> }) {
+function RecentPublications({ data, onDelete, onEdit, loadingEditId }: { data:Array<Record<string,string|null>>; onDelete:(id:string)=>Promise<void>; onEdit:(id:string)=>Promise<void>; loadingEditId:string }) {
   const [deleting, setDeleting] = useState('');
   async function copy(token:string){await navigator.clipboard.writeText(`${location.origin}${location.pathname}#/d/${token}`);}
   async function remove(id:string,title:string){
@@ -277,5 +303,5 @@ function RecentPublications({ data, onDelete }: { data:Array<Record<string,strin
     await onDelete(id);
     setDeleting('');
   }
-  return <section className="mt-10"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-black">최근 배포</h2><p className="mt-1 text-xs text-muted">최신 3개만 보관하며 새 배포가 추가되면 가장 오래된 자료를 자동 삭제합니다.</p></div><span className="text-xs text-muted">{data.length}건</span></div><div className="panel divide-y divide-line overflow-hidden">{data.slice(0,3).map((item)=><div className="flex items-center justify-between gap-3 p-4" key={item.id}><div className="min-w-0"><b className="block truncate text-sm">{item.title}</b><span className="text-xs text-muted">{item.issue_number} · {item.published_at ? new Date(item.published_at).toLocaleString('ko-KR') : '작성 중'}</span></div><div className="flex shrink-0 gap-2">{item.share_token&&<button className="button tiny ghost" onClick={()=>copy(item.share_token!)}><Clipboard/>링크 복사</button>}<button className="button tiny danger" disabled={deleting===item.id} onClick={()=>remove(item.id!,item.title??'배포')}><Trash2/>{deleting===item.id?'삭제 중':'삭제'}</button></div></div>)}</div></section>;
+  return <section className="mt-10"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-black">최근 배포</h2><p className="mt-1 text-xs text-muted">최신 3개만 보관하며 새 배포가 추가되면 가장 오래된 자료를 자동 삭제합니다.</p></div><span className="text-xs text-muted">{data.length}건</span></div><div className="panel divide-y divide-line overflow-hidden">{data.slice(0,3).map((item)=><div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={item.id}><div className="min-w-0"><b className="block truncate text-sm">{item.title}</b><span className="text-xs text-muted">{item.issue_number} · {item.published_at ? new Date(item.published_at).toLocaleString('ko-KR') : '작성 중'}</span></div><div className="flex shrink-0 flex-wrap gap-2"><button className="button tiny secondary" disabled={Boolean(loadingEditId)||deleting===item.id} onClick={()=>onEdit(item.id!)}>{loadingEditId===item.id?<LoaderCircle className="animate-spin"/>:<Pencil/>}{loadingEditId===item.id?'불러오는 중':'수정'}</button>{item.share_token&&<button className="button tiny ghost" onClick={()=>copy(item.share_token!)}><Clipboard/>링크 복사</button>}<button className="button tiny danger" disabled={deleting===item.id||Boolean(loadingEditId)} onClick={()=>remove(item.id!,item.title??'배포')}><Trash2/>{deleting===item.id?'삭제 중':'삭제'}</button></div></div>)}</div></section>;
 }

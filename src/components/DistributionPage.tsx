@@ -30,7 +30,7 @@ export function DistributionPage({ token }: { token: string }) {
   const imageCount = assets.length - videoCount;
   return <div className="min-h-screen bg-canvas text-ink"><AppHeader reporter/>
     <main className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-9 lg:px-8">
-      <header className="reporter-hero"><div><p className="eyebrow">{data.issueNumber} SNS 배포</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] sm:text-4xl">{data.title}</h1><p className="mt-3 text-sm text-muted">게시물 {data.posts.length}개 · 이미지 {imageCount}장 · 영상 {videoCount}개 · {new Date(data.publishedAt).toLocaleDateString('ko-KR')} 배포</p></div><div className="reporter-tip"><GripVertical/><p><b>원본을 준비한 뒤 한 번에 끌어놓으세요.</b><br/>SNS 작성창이 파일 드롭을 지원하면 여러 파일이 순서대로 전달됩니다.</p></div></header>
+      <header className="reporter-hero"><div><p className="eyebrow">{data.issueNumber} SNS 배포</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] sm:text-4xl">{data.title}</h1><p className="mt-3 text-sm text-muted">게시물 {data.posts.length}개 · 이미지 {imageCount}장 · 영상 {videoCount}개 · {new Date(data.publishedAt).toLocaleDateString('ko-KR')} 배포</p></div><div className="reporter-tip"><Share2/><p><b>원본은 페이지에서 자동으로 준비합니다.</b><br/>기기에 저장하지 않고 현재 페이지의 임시 메모리에만 두며, 나가면 사라집니다.</p></div></header>
       <div className="mt-6 space-y-6">{data.posts.map((post,index)=><ReporterPost key={post.id} post={post} index={index} notify={notify}/>)}</div>
       <footer className="py-10 text-center text-xs text-muted">고대신문 SNS 배포실 · 링크가 만료되면 배포 담당자에게 문의해 주세요.</footer>
     </main>{toast&&<div className="toast"><Check/>{toast}</div>}
@@ -42,6 +42,7 @@ type ReporterPostProps = { post: DistributionPost; index:number; notify:(value:s
 function ReporterPost({ post,index,notify }: ReporterPostProps) {
   const [working,setWorking]=useState('');
   const [dragFiles,setDragFiles]=useState<File[] | null>(null);
+  const [prepareError,setPrepareError]=useState('');
   const totalSize=useMemo(()=>post.assets.reduce((sum,asset)=>sum+asset.sizeBytes,0),[post.assets]);
   const videoCount=post.assets.filter(isVideoAsset).length;
   const imageCount=post.assets.length-videoCount;
@@ -49,12 +50,25 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
   async function action(key:string,task:()=>Promise<void>,success:string){setWorking(key);try{await task();notify(success);}catch(error){notify(error instanceof Error?error.message:'작업에 실패했습니다.');}finally{setWorking('');}}
   async function copyTitle(){await navigator.clipboard.writeText(post.title);notify('게시 제목을 복사했습니다.');}
   async function copyBody(){const body=[post.body,post.articleUrl,post.credits].filter(Boolean).join('\n\n');await navigator.clipboard.writeText(body);notify('게시 본문을 복사했습니다.');}
-  async function prepareDrag(){
+  async function prepareDrag(silent = false){
     setWorking('drag');
-    try { setDragFiles(await originalFiles(post.assets)); notify(`${post.assets.length}개 원본을 드래그할 준비가 됐습니다.`); }
-    catch(error){notify(error instanceof Error?error.message:'원본 파일 준비에 실패했습니다.');}
+    setPrepareError('');
+    try { setDragFiles(await originalFiles(post.assets)); if(!silent) notify(`${post.assets.length}개 원본이 준비됐습니다.`); }
+    catch(error){const message=error instanceof Error?error.message:'원본 파일 준비에 실패했습니다.';setPrepareError(message);if(!silent)notify(message);}
     finally{setWorking('');}
   }
+
+  useEffect(()=>{
+    let active=true;
+    if(!post.assets.length) return ()=>{ active=false; };
+    setWorking('drag');
+    setPrepareError('');
+    originalFiles(post.assets)
+      .then((files)=>{ if(active) setDragFiles(files); })
+      .catch((error)=>{ if(active) setPrepareError(error instanceof Error?error.message:'원본 파일 준비에 실패했습니다.'); })
+      .finally(()=>{ if(active) setWorking(''); });
+    return ()=>{ active=false; };
+  },[post.id]);
   function startDrag(event: React.DragEvent<HTMLDivElement>){
     if(!dragFiles){event.preventDefault();notify('먼저 원본 파일을 준비해 주세요.');return;}
     event.dataTransfer.effectAllowed='copy';
@@ -75,13 +89,13 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
       {post.assets.length>0&&<div className="media-transfer mt-4">
         <div className={`drag-to-sns ${dragFiles?'ready':''}`} draggable={Boolean(dragFiles)} onDragStart={startDrag}>
           {working==='drag'?<LoaderCircle className="animate-spin"/>:<GripVertical/>}
-          <div><b>{dragFiles?`${dragFiles.length}개 원본을 SNS 작성창으로 끌어놓기`:'여러 파일을 한 번에 끌기'}</b><span>{dragFiles?'이 영역을 누른 채 SNS 업로드 영역으로 이동하세요.':'원본을 한 번 준비하면 묶음으로 드래그할 수 있습니다.'}</span></div>
-          {!dragFiles&&<button className="button tiny secondary" onClick={prepareDrag} disabled={working==='drag'}>{working==='drag'?'준비 중':'원본 준비'}</button>}
+          <div><b>{dragFiles?`${dragFiles.length}개 원본 자동 준비 완료`:'원본을 자동으로 준비하는 중'}</b><span>{dragFiles?'다중 파일 공유에 바로 사용할 수 있습니다. 지원하는 사이트에서는 이 영역을 끌어놓을 수 있습니다.':'파일을 기기에 저장하지 않고 임시 메모리에 불러오고 있습니다.'}</span></div>
+          {prepareError&&<button className="button tiny secondary" onClick={()=>prepareDrag()} disabled={working==='drag'}>다시 준비</button>}
         </div>
-        <p className="drag-note">SNS·브라우저가 외부 다중 파일 드롭을 지원하지 않으면 아래 전체 공유 또는 ZIP을 사용해 주세요.</p>
+        <p className="drag-note">{prepareError?prepareError:'페이스북 웹은 브라우저 보안 정책상 다중 붙여넣기·외부 드롭을 받지 않습니다. 모바일은 ‘전체 공유’, PC 페이스북은 ‘전체 ZIP’을 이용해 주세요.'}</p>
       </div>}
 
-      <div className="asset-actions mt-4"><div className="origin-only">모든 작업은 원본 파일을 사용합니다.</div><div className="flex flex-1 flex-wrap justify-end gap-2"><button className="button secondary" disabled={!post.assets.length||working==='share'} onClick={()=>action('share',()=>shareAssets(post.assets,post.title),'공유창을 열었습니다.')}><Share2/>전체 공유</button><button className="button ghost" disabled={!post.assets.length||working==='zip'} onClick={()=>action('zip',()=>downloadZip(post.assets,post.title),'ZIP 다운로드를 시작했습니다.')}><ImageDown/>전체 ZIP</button></div></div>
+      <div className="asset-actions mt-4"><div className="origin-only">원본은 현재 페이지의 임시 메모리에만 준비됩니다.</div><div className="flex flex-1 flex-wrap justify-end gap-2"><button className="button secondary" disabled={!post.assets.length||working==='share'||working==='drag'} onClick={()=>action('share',()=>shareAssets(post.assets,post.title,dragFiles??undefined),'공유창을 열었습니다.')}><Share2/>전체 공유</button><button className="button ghost" disabled={!post.assets.length||working==='zip'} onClick={()=>action('zip',()=>downloadZip(post.assets,post.title),'ZIP 다운로드를 시작했습니다.')}><ImageDown/>전체 ZIP</button></div></div>
 
       <section className="copy-block mt-5"><div className="flex items-center justify-between gap-2"><b className="section-label">게시 본문</b><button className="button tiny secondary" onClick={copyBody}><Clipboard/>본문 복사</button></div><p className="mt-3 whitespace-pre-wrap text-sm leading-7">{post.body}</p>{post.articleUrl&&<a className="article-link" href={post.articleUrl} target="_blank" rel="noreferrer"><ExternalLink/>기사 원문 열기</a>}{post.credits&&<p className="mt-4 whitespace-pre-wrap border-t border-line pt-4 text-xs leading-6 text-muted">{post.credits}</p>}</section>
     </div>

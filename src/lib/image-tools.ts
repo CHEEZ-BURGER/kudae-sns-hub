@@ -25,7 +25,9 @@ export async function resizeImage(file: File, maxSize: number, quality: number):
 }
 
 async function fetchBlob(url: string) {
-  const response = await fetch(url);
+  // Original media prepared for sharing must stay ephemeral. `no-store`
+  // prevents the browser HTTP cache from retaining another persistent copy.
+  const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error('원본 파일을 불러오지 못했습니다. 링크를 새로고침해 주세요.');
   return response.blob();
 }
@@ -67,9 +69,9 @@ export async function originalFiles(assets: DistributionAsset[]) {
   }));
 }
 
-export async function shareAssets(assets: DistributionAsset[], title: string) {
+export async function shareAssets(assets: DistributionAsset[], title: string, preparedFiles?: File[]) {
   if (!navigator.share) throw new Error('이 기기에서는 여러 파일 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
-  const files = await originalFiles(assets);
+  const files = preparedFiles ?? await originalFiles(assets);
   if (!navigator.canShare?.({ files })) throw new Error('이 브라우저는 여러 파일 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
   await navigator.share({ title, files });
 }
