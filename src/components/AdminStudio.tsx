@@ -156,7 +156,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
 
   function startSample() {
     const names = ['석탑1','석탑2','석탑3','지속가능1','지속가능2','지속가능3','포스트몽골1','포스트몽골2','덕소농장 포토뉴스1','뉴라이트 사설1','뉴라이트 사설2'];
-    const palette = ['#7a0019','#a31d3b','#d7a9b3','#183c64','#557ca5'];
+    const palette = ['#ff205c','#1d1d1d','#ff8bad','#623446','#ffc4d4'];
     const files = names.map((name, index) => {
       const color = palette[index % palette.length];
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="${color}"/><text x="70" y="130" fill="white" font-family="sans-serif" font-size="42" font-weight="700">고대신문 · 2046호</text><text x="70" y="680" fill="white" font-family="sans-serif" font-size="76" font-weight="800">${name.replace(/\d+$/, '')}</text><text x="70" y="790" fill="white" font-family="sans-serif" font-size="38">샘플 카드뉴스 ${index + 1}</text></svg>`;
