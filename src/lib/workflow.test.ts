@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bestSectionMatch, extractGroupName, groupImages, naturalSortFiles, splitManuscript } from './workflow';
+import { bestSectionMatch, extractGroupName, groupMedia, isVideoFile, naturalSortFiles, splitManuscript } from './workflow';
 
 const manuscript = `
 [주간 뉴스레터 석탑] 정기고연전 폐막제, 참살이길 전통 유지한다
@@ -31,7 +31,13 @@ describe('파일명 처리', () => {
   it('1, 2, 10 순서로 자연 정렬한다', () => {
     const sorted = naturalSortFiles([fakeFile('2046호 석탑10.jpg'), fakeFile('2046호 석탑2.jpg'), fakeFile('2046호 석탑1.jpg')]);
     expect(sorted.map((file) => file.name)).toEqual(['2046호 석탑1.jpg', '2046호 석탑2.jpg', '2046호 석탑10.jpg']);
-    expect([...groupImages(sorted).keys()]).toEqual(['석탑']);
+    expect([...groupMedia(sorted).keys()]).toEqual(['석탑']);
+  });
+
+  it('영상도 파일명 기준으로 같은 게시물에 자연 정렬한다', () => {
+    const grouped = groupMedia([fakeFile('2046호 인터뷰10.mp4'), fakeFile('2046호 인터뷰2.mov'), fakeFile('2046호 인터뷰1.jpg')]);
+    expect(isVideoFile('2046호 인터뷰2.mov')).toBe(true);
+    expect(grouped.get('인터뷰')?.map((file) => file.name)).toEqual(['2046호 인터뷰1.jpg', '2046호 인터뷰2.mov', '2046호 인터뷰10.mp4']);
   });
 });
 

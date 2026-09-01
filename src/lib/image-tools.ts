@@ -26,8 +26,12 @@ export async function resizeImage(file: File, maxSize: number, quality: number):
 
 async function fetchBlob(url: string) {
   const response = await fetch(url);
-  if (!response.ok) throw new Error('이미지 다운로드에 실패했습니다. 링크를 새로고침해 주세요.');
+  if (!response.ok) throw new Error('원본 파일을 불러오지 못했습니다. 링크를 새로고침해 주세요.');
   return response.blob();
+}
+
+export function isVideoAsset(asset: DistributionAsset) {
+  return asset.mimeType.startsWith('video/') || /\.(?:mp4|mov|m4v|webm)$/i.test(asset.filename);
 }
 
 export async function copyImageToClipboard(url: string) {
@@ -42,34 +46,31 @@ export async function copyImageToClipboard(url: string) {
   await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
 }
 
-export async function downloadAsset(asset: DistributionAsset, optimized: boolean) {
-  const url = optimized && asset.optimizedUrl ? asset.optimizedUrl : asset.originalUrl;
-  const blob = await fetchBlob(url);
-  const extension = optimized && asset.optimizedUrl ? 'jpg' : asset.filename.split('.').pop();
-  triggerDownload(blob, `${asset.filename.replace(/\.[^.]+$/, '')}.${extension}`);
+export async function downloadAsset(asset: DistributionAsset) {
+  triggerDownload(await fetchBlob(asset.originalUrl), asset.filename);
 }
 
-export async function downloadZip(assets: DistributionAsset[], optimized: boolean, filename: string) {
+export async function downloadZip(assets: DistributionAsset[], filename: string) {
   const { default: JSZip } = await import('jszip');
   const zip = new JSZip();
   await Promise.all(assets.map(async (asset, index) => {
-    const url = optimized && asset.optimizedUrl ? asset.optimizedUrl : asset.originalUrl;
-    const blob = await fetchBlob(url);
-    const base = asset.filename.replace(/\.[^.]+$/, '');
-    zip.file(`${String(index + 1).padStart(2, '0')}_${base}${optimized ? '.jpg' : asset.filename.slice(base.length)}`, blob);
+    const blob = await fetchBlob(asset.originalUrl);
+    zip.file(`${String(index + 1).padStart(2, '0')}_${asset.filename}`, blob);
   }));
   triggerDownload(await zip.generateAsync({ type: 'blob' }), `${filename}.zip`);
 }
 
-export async function shareAssets(assets: DistributionAsset[], optimized: boolean, title: string) {
-  if (!navigator.share) throw new Error('이 기기에서는 여러 이미지 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
-  const files = await Promise.all(assets.map(async (asset, index) => {
-    const useOptimized = optimized && asset.optimizedUrl;
-    const blob = await fetchBlob(useOptimized ? asset.optimizedUrl! : asset.originalUrl);
-    const filename = useOptimized ? `${asset.filename.replace(/\.[^.]+$/, '')}.jpg` : asset.filename;
-    return new File([blob], `${String(index + 1).padStart(2, '0')}_${filename}`, { type: blob.type || asset.mimeType });
+export async function originalFiles(assets: DistributionAsset[]) {
+  return Promise.all(assets.map(async (asset, index) => {
+    const blob = await fetchBlob(asset.originalUrl);
+    return new File([blob], `${String(index + 1).padStart(2, '0')}_${asset.filename}`, { type: blob.type || asset.mimeType });
   }));
-  if (!navigator.canShare?.({ files })) throw new Error('이 브라우저는 여러 이미지 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
+}
+
+export async function shareAssets(assets: DistributionAsset[], title: string) {
+  if (!navigator.share) throw new Error('이 기기에서는 여러 파일 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
+  const files = await originalFiles(assets);
+  if (!navigator.canShare?.({ files })) throw new Error('이 브라우저는 여러 파일 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
   await navigator.share({ title, files });
 }
 

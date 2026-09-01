@@ -5,7 +5,7 @@ import type { DraftPost, SourceSection } from '../types';
 import { AppHeader } from './AppHeader';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { expandFiles, extractManuscript, filesFromDataTransfer, partitionSupportedFiles } from '../lib/document-parser';
-import { buildDraftPosts, confidenceLabel, formatBytes, groupImages, splitManuscript } from '../lib/workflow';
+import { buildDraftPosts, confidenceLabel, formatBytes, groupMedia, isVideoFile, splitManuscript } from '../lib/workflow';
 import { listAdminPublications, publishDistribution } from '../lib/publish';
 
 type AdminStudioProps = { session: Session | null; demoMode?: boolean };
@@ -41,7 +41,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
   const [publicationTitle, setPublicationTitle] = useState('2046호 카드뉴스');
   const [sections, setSections] = useState<SourceSection[]>([]);
   const [posts, setPosts] = useState<DraftPost[]>([]);
-  const [pendingImages, setPendingImages] = useState<File[]>([]);
+  const [pendingMedia, setPendingMedia] = useState<File[]>([]);
   const [pasteText, setPasteText] = useState('');
   const [showPaste, setShowPaste] = useState(false);
   const [message, setMessage] = useState('');
@@ -67,10 +67,10 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       const partitioned = partitionSupportedFiles(expanded.files);
       const issue = expanded.files.map((file) => file.name.match(/\d+호/u)?.[0]).find(Boolean);
       if (issue) { setIssueNumber(issue); setPublicationTitle(`${issue} 카드뉴스`); }
-      setPendingImages(partitioned.images);
+      setPendingMedia(partitioned.media);
       const nextWarnings = [...expanded.warnings];
       if (partitioned.unsupported.length) nextWarnings.push(`지원하지 않는 파일 ${partitioned.unsupported.length}개는 제외했습니다.`);
-      if (!partitioned.images.length) nextWarnings.push('이미지 파일을 찾지 못했습니다.');
+      if (!partitioned.media.length) nextWarnings.push('이미지 또는 영상 파일을 찾지 못했습니다.');
       let text = pasteText;
       if (partitioned.manuscripts.length) {
         if (partitioned.manuscripts.length > 1) nextWarnings.push('원고가 여러 개여서 첫 번째 문서를 사용했습니다.');
@@ -84,17 +84,17 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
         setShowPaste(true);
       }
       setWarnings(nextWarnings);
-      if (partitioned.images.length && text.trim()) analyse(partitioned.images, text);
+      if (partitioned.media.length && text.trim()) analyse(partitioned.media, text);
     } catch (error) { setMessage(error instanceof Error ? error.message : '파일 처리 중 오류가 발생했습니다.'); }
     finally { setBusy(false); }
   }
 
-  function analyse(images = pendingImages, text = pasteText) {
+  function analyse(media = pendingMedia, text = pasteText) {
     const nextSections = splitManuscript(text);
-    if (!images.length) { setMessage('이미지를 먼저 추가해 주세요.'); return; }
+    if (!media.length) { setMessage('이미지 또는 영상을 먼저 추가해 주세요.'); return; }
     if (!nextSections.length) { setMessage('`[보도] 제목` 같은 원고 섹션 헤더를 찾지 못했습니다. 원고를 확인해 주세요.'); setShowPaste(true); return; }
     setSections(nextSections);
-    setPosts(buildDraftPosts(groupImages(images), nextSections));
+    setPosts(buildDraftPosts(groupMedia(media), nextSections));
     setStage('edit'); setMessage('');
   }
 
@@ -162,7 +162,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="${color}"/><text x="70" y="130" fill="white" font-family="sans-serif" font-size="42" font-weight="700">고대신문 · 2046호</text><text x="70" y="680" fill="white" font-family="sans-serif" font-size="76" font-weight="800">${name.replace(/\d+$/, '')}</text><text x="70" y="790" fill="white" font-family="sans-serif" font-size="38">샘플 카드뉴스 ${index + 1}</text></svg>`;
       return new File([svg], `2046호 ${name}.svg`, { type: 'image/svg+xml' });
     });
-    setPasteText(sampleManuscript); setPendingImages(files); analyse(files, sampleManuscript);
+    setPasteText(sampleManuscript); setPendingMedia(files); analyse(files, sampleManuscript);
   }
 
   const totalBytes = useMemo(() => posts.flatMap((post) => post.assets).reduce((sum, asset) => sum + asset.file.size, 0), [posts]);
@@ -174,7 +174,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
         {showAdminUsers && <AdminUsersPanel onClose={()=>setShowAdminUsers(false)}/>} 
         <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
-          <div><p className="eyebrow">{stage === 'upload' ? '새 배포 만들기' : publicationTitle}</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] md:text-4xl">{stage === 'upload' ? '파일 한 번, 배포 준비 끝.' : stage === 'done' ? '배포 링크가 준비됐습니다.' : '자동 매칭을 확인해 주세요.'}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{stage === 'upload' ? '카드뉴스 폴더와 원고를 올리면 게시물별 이미지와 본문을 자동으로 연결합니다.' : stage === 'edit' ? `${posts.length}개 게시물 · 이미지 ${posts.flatMap((post)=>post.assets).length}장 · ${formatBytes(totalBytes)}` : '기자는 이 링크에서 이미지와 본문을 바로 가져갈 수 있습니다.'}</p></div>
+          <div><p className="eyebrow">{stage === 'upload' ? '새 배포 만들기' : publicationTitle}</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] md:text-4xl">{stage === 'upload' ? '파일 한 번, 배포 준비 끝.' : stage === 'done' ? '배포 링크가 준비됐습니다.' : '자동 매칭을 확인해 주세요.'}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{stage === 'upload' ? '카드뉴스 이미지·영상 폴더와 원고를 올리면 게시물별 미디어와 본문을 자동으로 연결합니다.' : stage === 'edit' ? `${posts.length}개 게시물 · 미디어 ${posts.flatMap((post)=>post.assets).length}개 · ${formatBytes(totalBytes)}` : '기자는 이 링크에서 원본 미디어와 본문을 바로 가져갈 수 있습니다.'}</p></div>
           <Stepper stage={stage}/>
         </div>
 
@@ -182,7 +182,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
         {stage === 'upload' && <UploadStage busy={busy} dragging={dragging} setDragging={setDragging} drop={drop} fileInput={fileInput} directoryInput={directoryInput} receiveFiles={receiveFiles} warnings={warnings} showPaste={showPaste} setShowPaste={setShowPaste} pasteText={pasteText} setPasteText={setPasteText} analyse={()=>analyse()} startSample={startSample}/>} 
         {stage === 'edit' && <EditStage issueNumber={issueNumber} setIssueNumber={setIssueNumber} publicationTitle={publicationTitle} setPublicationTitle={setPublicationTitle} posts={posts} sections={sections} updatePost={updatePost} selectSection={selectSection} setDragAssetId={setDragAssetId} reorderAsset={reorderAsset} moveAsset={moveAsset} setPosts={setPosts} addPost={addPost} publish={publish} reset={()=>setStage('upload')} demoMode={demoMode}/>} 
         {stage === 'publishing' && <PublishingStage progress={progress}/>} 
-        {stage === 'done' && <DoneStage shareUrl={shareUrl} reset={()=>{ setStage('upload'); setPosts([]); setSections([]); setPendingImages([]); setPasteText(''); }}/>} 
+        {stage === 'done' && <DoneStage shareUrl={shareUrl} reset={()=>{ setStage('upload'); setPosts([]); setSections([]); setPendingMedia([]); setPasteText(''); }}/>}
 
         {stage === 'upload' && recent.length > 0 && <RecentPublications data={recent}/>} 
       </main>
@@ -208,16 +208,16 @@ function UploadStage(props: UploadProps) {
     <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
       <div className={`drop-zone min-h-[360px] ${props.dragging ? 'dragging' : ''}`} onDragOver={(event)=>{event.preventDefault();props.setDragging(true);}} onDragLeave={()=>props.setDragging(false)} onDrop={props.drop}>
         {props.busy ? <><LoaderCircle className="animate-spin text-crimson" size={36}/><b className="mt-5">파일을 분석하고 있습니다…</b><span className="mt-2 text-sm text-muted">ZIP 해제와 원고 추출은 파일 크기에 따라 잠시 걸릴 수 있어요.</span></> : <>
-          <span className="icon-well"><UploadCloud size={29}/></span><b className="mt-5 text-xl">여기에 폴더나 파일을 놓으세요</b><span className="mt-2 text-center text-sm text-muted">이미지 · ZIP · HWP/HWPX · TXT · DOCX 지원</span>
+          <span className="icon-well"><UploadCloud size={29}/></span><b className="mt-5 text-xl">여기에 폴더나 파일을 놓으세요</b><span className="mt-2 text-center text-sm text-muted">이미지 · MP4/MOV/WebM · ZIP · HWP/HWPX · TXT · DOCX 지원</span>
           <div className="mt-6 flex flex-wrap justify-center gap-2"><button className="button secondary" type="button" onClick={()=>props.fileInput.current?.click()}><Images/>파일 선택</button><button className="button ghost" type="button" onClick={()=>props.directoryInput.current?.click()}><FileArchive/>폴더 선택</button></div>
-          <input ref={props.fileInput} hidden type="file" multiple accept="image/*,.zip,.hwp,.hwpx,.txt,.docx" onChange={(event)=>props.receiveFiles([...event.target.files ?? []])}/>
+          <input ref={props.fileInput} hidden type="file" multiple accept="image/*,video/mp4,video/quicktime,video/webm,.m4v,.zip,.hwp,.hwpx,.txt,.docx" onChange={(event)=>props.receiveFiles([...event.target.files ?? []])}/>
           <input ref={props.directoryInput} hidden type="file" multiple {...directoryProps} onChange={(event)=>props.receiveFiles([...event.target.files ?? []])}/>
         </>}
       </div>
       <aside className="panel flex flex-col overflow-hidden">
         <div className="border-b border-line p-5"><p className="text-sm font-extrabold">자동 분석 항목</p><p className="mt-1 text-xs leading-5 text-muted">파일을 올리면 아래 순서로 정리합니다.</p></div>
-        <div className="space-y-1 p-3">{[['이미지 묶음 찾기',Images],['원고 제목별 분리',FileText],['키워드 자동 연결',Sparkles],['공유용 이미지 준비',Archive]].map(([label,Icon],i)=><div className="analysis-row" key={String(label)}><span>{i+1}</span><p>{String(label)}</p>{typeof Icon !== 'string' && <Icon size={16}/>}</div>)}</div>
-        <div className="mx-5 mt-auto mb-5 rounded-xl bg-warm p-4 text-xs leading-5 text-muted"><b className="text-ink">원본은 그대로 보관됩니다.</b><br/>기자 화면에는 가벼운 썸네일만 먼저 표시됩니다.</div>
+        <div className="space-y-1 p-3">{[['이미지·영상 묶음 찾기',Images],['원고 제목별 분리',FileText],['키워드 자동 연결',Sparkles],['원본 파일 준비',Archive]].map(([label,Icon],i)=><div className="analysis-row" key={String(label)}><span>{i+1}</span><p>{String(label)}</p>{typeof Icon !== 'string' && <Icon size={16}/>}</div>)}</div>
+        <div className="mx-5 mt-auto mb-5 rounded-xl bg-warm p-4 text-xs leading-5 text-muted"><b className="text-ink">변환 없이 원본을 보관합니다.</b><br/>공유·다운로드·드래그 모두 같은 원본 파일을 사용합니다.</div>
       </aside>
     </section>
     {props.warnings.length > 0 && <div className="notice mt-4"><b>파일 확인 결과</b><ul className="mt-2 list-disc space-y-1 pl-5">{props.warnings.map((warning)=><li key={warning}>{warning}</li>)}</ul></div>}
@@ -239,7 +239,7 @@ function EditStage(props: EditProps) {
     <div className="space-y-5">{props.posts.map((post,index)=><article className="panel overflow-hidden" key={post.id}>
       <header className="flex items-center justify-between gap-4 border-b border-line bg-white px-4 py-3 sm:px-5"><div className="flex min-w-0 items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-lg bg-crimson text-xs font-black text-white">{index+1}</span><div className="min-w-0"><b className="block truncate text-sm">{post.groupName}</b><span className={`confidence ${post.confidence>=.7?'high':post.confidence>=.4?'medium':'low'}`}>매칭 {confidenceLabel(post.confidence)} · {Math.round(post.confidence*100)}%</span></div></div><button className="icon-button danger" title="게시물 삭제" onClick={()=>props.setPosts((current)=>current.filter((item)=>item.id!==post.id))}><Trash2/></button></header>
       <div className="grid gap-6 p-4 sm:p-5 xl:grid-cols-[minmax(280px,.8fr)_minmax(380px,1.2fr)]">
-        <div><div className="mb-2 flex items-center justify-between"><b className="section-label">이미지 순서</b><span className="text-xs text-muted">{post.assets.length}장</span></div>{post.assets.length ? <div className="image-order-grid">{post.assets.map((asset,assetIndex)=><div className="image-order-item" draggable onDragStart={()=>props.setDragAssetId(asset.id)} onDragOver={(e)=>e.preventDefault()} onDrop={()=>props.reorderAsset(post.id,asset.id)} key={asset.id}><img src={asset.previewUrl} alt=""/><span>{assetIndex+1}</span><GripVertical className="grip"/><div className="move-buttons"><button onClick={()=>props.moveAsset(post.id,asset.id,-1)} title="앞으로"><ArrowUp/></button><button onClick={()=>props.moveAsset(post.id,asset.id,1)} title="뒤로"><ArrowDown/></button></div></div>)}</div> : <div className="empty-inline"><Images/><span>연결된 이미지가 없습니다.</span></div>}</div>
+        <div><div className="mb-2 flex items-center justify-between"><b className="section-label">미디어 순서</b><span className="text-xs text-muted">{post.assets.length}개</span></div>{post.assets.length ? <div className="image-order-grid">{post.assets.map((asset,assetIndex)=><div className="image-order-item" draggable onDragStart={()=>props.setDragAssetId(asset.id)} onDragOver={(e)=>e.preventDefault()} onDrop={()=>props.reorderAsset(post.id,asset.id)} key={asset.id}>{isVideoFile(asset.file.name)||asset.file.type.startsWith('video/')?<video src={asset.previewUrl} muted preload="metadata"/>:<img src={asset.previewUrl} alt=""/>}<span>{assetIndex+1}</span><GripVertical className="grip"/><div className="move-buttons"><button onClick={()=>props.moveAsset(post.id,asset.id,-1)} title="앞으로"><ArrowUp/></button><button onClick={()=>props.moveAsset(post.id,asset.id,1)} title="뒤로"><ArrowDown/></button></div></div>)}</div> : <div className="empty-inline"><Images/><span>연결된 이미지나 영상이 없습니다.</span></div>}</div>
         <div className="space-y-4"><label className="field"><span>원고 연결</span><select value={post.sectionId} onChange={(e)=>props.selectSection(post.id,e.target.value)}><option value="">직접 입력 / 연결 안 함</option>{props.sections.map((section)=><option value={section.id} key={section.id}>{section.header}</option>)}</select></label><label className="field"><span>제목</span><input value={post.title} onChange={(e)=>props.updatePost(post.id,{title:e.target.value})}/></label><label className="field"><span>본문 · 원고의 크레딧이 자동으로 포함됩니다</span><textarea className="min-h-40" value={post.body} onChange={(e)=>props.updatePost(post.id,{body:e.target.value})}/></label><div className="grid gap-4 sm:grid-cols-2"><label className="field"><span>기사 URL</span><input type="url" value={post.articleUrl} onChange={(e)=>props.updatePost(post.id,{articleUrl:e.target.value})}/></label><label className="field"><span>추가 크레딧 (선택)</span><textarea className="min-h-20" value={post.credits} onChange={(e)=>props.updatePost(post.id,{credits:e.target.value})}/></label></div></div>
       </div>
     </article>)}</div>
@@ -249,7 +249,7 @@ function EditStage(props: EditProps) {
 }
 
 function PublishingStage({ progress }: { progress: {label:string;value:number} }) {
-  return <section className="panel mx-auto max-w-xl p-8 text-center sm:p-12"><LoaderCircle className="mx-auto animate-spin text-crimson" size={40}/><h2 className="mt-5 text-xl font-black">이미지를 안전하게 올리고 있습니다.</h2><p className="mt-2 text-sm text-muted">창을 닫지 말아 주세요.</p><div className="progress mt-7"><span style={{width:`${progress.value}%`}}/></div><div className="mt-3 flex justify-between text-xs text-muted"><span>{progress.label}</span><b>{progress.value}%</b></div></section>;
+  return <section className="panel mx-auto max-w-xl p-8 text-center sm:p-12"><LoaderCircle className="mx-auto animate-spin text-crimson" size={40}/><h2 className="mt-5 text-xl font-black">원본 파일을 안전하게 올리고 있습니다.</h2><p className="mt-2 text-sm text-muted">영상은 파일 크기에 따라 시간이 더 걸릴 수 있으니 창을 닫지 말아 주세요.</p><div className="progress mt-7"><span style={{width:`${progress.value}%`}}/></div><div className="mt-3 flex justify-between text-xs text-muted"><span>{progress.label}</span><b>{progress.value}%</b></div></section>;
 }
 
 function DoneStage({ shareUrl, reset }: { shareUrl:string; reset:()=>void }) {

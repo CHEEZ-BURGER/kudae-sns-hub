@@ -1,4 +1,4 @@
-import { isImageFile, isManuscriptFile } from './workflow';
+import { isManuscriptFile, isMediaFile } from './workflow';
 
 export type ExpandedFiles = { files: File[]; warnings: string[] };
 
@@ -55,15 +55,15 @@ export async function extractManuscript(file: File): Promise<string> {
 
 export function partitionSupportedFiles(files: File[]) {
   return {
-    images: files.filter((file) => isImageFile(file.name)),
+    media: files.filter((file) => isMediaFile(file.name)),
     manuscripts: files.filter((file) => isManuscriptFile(file.name)),
-    unsupported: files.filter((file) => !isImageFile(file.name) && !isManuscriptFile(file.name) && !file.name.toLowerCase().endsWith('.zip')),
+    unsupported: files.filter((file) => !isMediaFile(file.name) && !isManuscriptFile(file.name) && !file.name.toLowerCase().endsWith('.zip')),
   };
 }
 
 function guessMime(name: string) {
   const ext = name.split('.').pop()?.toLowerCase();
-  return ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', txt: 'text/plain' } as Record<string, string>)[ext ?? ''] ?? 'application/octet-stream';
+  return ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', heic: 'image/heic', svg: 'image/svg+xml', mp4: 'video/mp4', mov: 'video/quicktime', m4v: 'video/x-m4v', webm: 'video/webm', txt: 'text/plain' } as Record<string, string>)[ext ?? ''] ?? 'application/octet-stream';
 }
 
 type FileSystemEntryLike = {

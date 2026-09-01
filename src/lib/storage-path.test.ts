@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { originalStoragePath, safeImageExtension } from './storage-path';
+import { originalStoragePath, safeMediaExtension } from './storage-path';
 
 describe('Supabase Storage 경로', () => {
   it('한글 원본 파일명을 Storage key에 넣지 않는다', () => {
@@ -14,6 +14,10 @@ describe('Supabase Storage 경로', () => {
   });
 
   it('확장자가 없으면 MIME 형식에서 안전한 확장자를 정한다', () => {
-    expect(safeImageExtension('카드뉴스', 'image/png')).toBe('png');
+    expect(safeMediaExtension('카드뉴스', 'image/png')).toBe('png');
+  });
+
+  it('영상 원본도 안전한 영문 Storage 경로를 만든다', () => {
+    expect(originalStoragePath('user/publication/post/asset', '2047호_영상카뉴1.mov', 'video/quicktime')).toBe('user/publication/post/asset/original.mov');
   });
 });

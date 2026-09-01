@@ -2,6 +2,7 @@ import type { DraftPost } from '../types';
 import { resizeImage } from './image-tools';
 import { requireSupabase } from './supabase';
 import { originalStoragePath } from './storage-path';
+import { isVideoFile } from './workflow';
 
 export type PublishInput = {
   issueNumber: string;
@@ -78,19 +79,17 @@ export async function publishDistribution(input: PublishInput, onProgress?: (mes
         const asset = post.assets[assetIndex];
         const root = `${userData.user.id}/${publicationId}/${postId}/${asset.id}`;
         const originalPath = originalStoragePath(root, asset.file.name, asset.file.type);
-        const optimizedPath = `${root}/optimized.jpg`;
         const thumbPath = `${root}/thumb.jpg`;
-        onProgress?.(`${post.title} · ${assetIndex + 1}번째 이미지 처리 중`, Math.round((processed / Math.max(1, totalAssets)) * 100));
+        const video = asset.file.type.startsWith('video/') || isVideoFile(asset.file.name);
+        onProgress?.(`${post.title} · ${assetIndex + 1}번째 원본 업로드 중`, Math.round((processed / Math.max(1, totalAssets)) * 100));
 
-        const [optimized, thumb] = await Promise.all([
-          resizeImage(asset.file, 2160, 0.9),
-          resizeImage(asset.file, 640, 0.78),
-        ]);
-        const uploads = [
+        const uploads: Array<readonly [string, Blob, string]> = [
           [originalPath, asset.file, asset.file.type || 'application/octet-stream'],
-          [optimizedPath, optimized, 'image/jpeg'],
-          [thumbPath, thumb, 'image/jpeg'],
-        ] as const;
+        ];
+        if (!video) {
+          const thumb = await resizeImage(asset.file, 640, 0.78);
+          uploads.push([thumbPath, thumb, 'image/jpeg']);
+        }
         for (const [path, body, contentType] of uploads) {
           const { error } = await client.storage.from('sns-assets').upload(path, body, { contentType, upsert: false });
           if (error) throw error;
@@ -105,8 +104,7 @@ export async function publishDistribution(input: PublishInput, onProgress?: (mes
           width: null,
           height: null,
           original_path: originalPath,
-          optimized_path: optimizedPath,
-          thumbnail_path: thumbPath,
+          thumbnail_path: video ? originalPath : thumbPath,
           position: assetIndex,
         });
         if (assetError) throw assetError;

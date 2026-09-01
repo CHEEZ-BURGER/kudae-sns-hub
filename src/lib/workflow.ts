@@ -1,6 +1,7 @@
 import type { DraftPost, SourceSection } from '../types';
 
 const imageExtensions = /\.(?:jpe?g|png|webp|gif|avif|heic|svg)$/i;
+const videoExtensions = /\.(?:mp4|mov|m4v|webm)$/i;
 const manuscriptExtensions = /\.(?:hwp|hwpx|txt|docx)$/i;
 // Real section headers in newsroom HWP files are separated by a blank line.
 // Requiring that boundary prevents newsletter teaser lines such as
@@ -12,6 +13,14 @@ const naturalCollator = new Intl.Collator('ko-KR', { numeric: true, sensitivity:
 
 export function isImageFile(name: string) {
   return imageExtensions.test(name);
+}
+
+export function isVideoFile(name: string) {
+  return videoExtensions.test(name);
+}
+
+export function isMediaFile(name: string) {
+  return isImageFile(name) || isVideoFile(name);
 }
 
 export function isManuscriptFile(name: string) {
@@ -33,14 +42,16 @@ export function extractGroupName(filename: string): string {
     .trim();
 }
 
-export function groupImages(files: File[]): Map<string, File[]> {
+export function groupMedia(files: File[]): Map<string, File[]> {
   const groups = new Map<string, File[]>();
-  for (const file of naturalSortFiles(files.filter((item) => isImageFile(item.name)))) {
-    const group = extractGroupName(file.name) || '이름 없는 이미지';
+  for (const file of naturalSortFiles(files.filter((item) => isMediaFile(item.name)))) {
+    const group = extractGroupName(file.name) || '이름 없는 미디어';
     groups.set(group, [...(groups.get(group) ?? []), file]);
   }
   return groups;
 }
+
+export const groupImages = groupMedia;
 
 function cleanupExtractedText(text: string) {
   return text

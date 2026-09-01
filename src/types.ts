@@ -35,15 +35,7 @@ export type DistributionAsset = {
   mimeType: string;
   thumbUrl: string;
   originalUrl: string;
-  optimizedUrl: string | null;
   position: number;
-};
-
-export type CompletionRecord = {
-  postId: string;
-  platform: string;
-  assignee: string;
-  completedAt: string;
 };
 
 export type DistributionPost = {
@@ -63,5 +55,4 @@ export type Distribution = {
   publishedAt: string;
   expiresAt: string | null;
   posts: DistributionPost[];
-  completions: CompletionRecord[];
 };
