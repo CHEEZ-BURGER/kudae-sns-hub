@@ -3,6 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { AlertCircle, Archive, ArrowDown, ArrowUp, Check, ChevronRight, CirclePlus, Clipboard, FileArchive, FileText, GripVertical, Images, Link2, LoaderCircle, Plus, Send, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
 import type { DraftPost, SourceSection } from '../types';
 import { AppHeader } from './AppHeader';
+import { AdminUsersPanel } from './AdminUsersPanel';
 import { expandFiles, extractManuscript, filesFromDataTransfer, partitionSupportedFiles } from '../lib/document-parser';
 import { buildDraftPosts, confidenceLabel, formatBytes, groupImages, splitManuscript } from '../lib/workflow';
 import { listAdminPublications, publishDistribution } from '../lib/publish';
@@ -49,6 +50,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
   const [shareUrl, setShareUrl] = useState('');
   const [dragAssetId, setDragAssetId] = useState('');
   const [recent, setRecent] = useState<Array<Record<string, string | null>>>([]);
+  const [showAdminUsers, setShowAdminUsers] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const directoryInput = useRef<HTMLInputElement>(null);
 
@@ -167,9 +169,10 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
-      <AppHeader email={session?.user.email}/>
+      <AppHeader username={session?.user.email?.split('@')[0]} onManageAdmins={demoMode ? undefined : ()=>setShowAdminUsers((value)=>!value)}/>
       {demoMode && <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-semibold text-amber-900">샘플 모드 · Supabase 연결 전에는 분석과 편집만 체험할 수 있습니다.</div>}
       <main className="mx-auto max-w-7xl px-4 py-7 sm:px-6 lg:px-8">
+        {showAdminUsers && <AdminUsersPanel onClose={()=>setShowAdminUsers(false)}/>} 
         <div className="mb-7 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div><p className="eyebrow">{stage === 'upload' ? '새 배포 만들기' : publicationTitle}</p><h1 className="mt-2 text-3xl font-black tracking-[-.035em] md:text-4xl">{stage === 'upload' ? '파일 한 번, 배포 준비 끝.' : stage === 'done' ? '배포 링크가 준비됐습니다.' : '자동 매칭을 확인해 주세요.'}</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">{stage === 'upload' ? '카드뉴스 폴더와 원고를 올리면 게시물별 이미지와 본문을 자동으로 연결합니다.' : stage === 'edit' ? `${posts.length}개 게시물 · 이미지 ${posts.flatMap((post)=>post.assets).length}장 · ${formatBytes(totalBytes)}` : '기자는 이 링크에서 이미지와 본문을 바로 가져갈 수 있습니다.'}</p></div>
           <Stepper stage={stage}/>

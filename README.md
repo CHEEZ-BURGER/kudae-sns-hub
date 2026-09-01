@@ -17,6 +17,7 @@
 - 기자의 본문 복사, 개별 이미지 복사/저장, 다중 파일 Web Share, 게시물별 ZIP 다운로드
 - Instagram/Facebook/X 담당자 및 완료 시각 기록
 - 로그인 없는 읽기 전용 토큰 링크, 만료일 지원, 비공개 Storage 서명 URL
+- 관리자 ID/비밀번호 로그인과 관리자 화면의 추가 계정 발급
 - 모바일 우선 기자 화면과 한국어 로딩·오류·빈 상태
 
 ## 구조
@@ -30,6 +31,7 @@ src/                         GitHub Pages용 React 앱
 supabase/
   migrations/                DB, RLS, 비공개 Storage 설정
   functions/public-distribution/  토큰 검증, 서명 URL, 완료 기록
+  functions/admin-users/     관리자 인증, 계정 목록·추가
 fixtures/                    2046호 테스트 원고
 .github/workflows/           GitHub Pages 자동 배포
 ```
@@ -71,21 +73,22 @@ npx supabase login
 npx supabase link --project-ref 프로젝트-ref
 npx supabase db push
 npx supabase functions deploy public-distribution
+npx supabase functions deploy admin-users
 ```
 
-`supabase/config.toml`에서 기자용 함수만 `verify_jwt = false`로 설정돼 있습니다. 함수는 무방비 공개가 아니라 URL의 192비트 랜덤 토큰을 SHA-256으로 검증한 뒤 해당 배포만 읽습니다. Storage 버킷은 공개가 아니며 함수가 1시간짜리 서명 URL을 발급합니다.
+`supabase/config.toml`의 함수들은 내부에서 용도별 검증을 직접 수행합니다. 기자용 함수는 URL의 192비트 랜덤 토큰을 SHA-256으로 검증한 뒤 해당 배포만 읽고, 관리자 계정 함수는 로그인 토큰과 `is_admin` 권한을 모두 확인합니다. Storage 버킷은 공개가 아니며 함수가 1시간짜리 서명 URL을 발급합니다.
 
 ### 첫 관리자 지정
 
-Supabase Dashboard → Authentication → Users에서 관리자 계정을 생성합니다. 그 계정으로 앱에 한 번 로그인하면 `profiles` 행이 자동 생성됩니다. SQL Editor에서 아래 쿼리를 한 번 실행합니다.
+첫 계정에 한해서 Supabase Dashboard → Authentication → Users에서 사용자를 생성합니다. 앱의 관리자 ID가 `desk_editor`라면 이메일에는 `desk_editor@admin.kudae.invalid`를 입력하고 **Auto confirm user**를 켭니다. 이 주소는 메일 발송용이 아니라 Supabase Auth 내부 식별자입니다. 프로필은 자동 생성되므로 SQL Editor에서 아래 쿼리를 한 번 실행합니다.
 
 ```sql
 update public.profiles
 set is_admin = true
-where email = '관리자@kunews.ac.kr';
+where username = 'desk_editor';
 ```
 
-이후 관리자만 원본 업로드, 게시물 DB 변경, 비공개 Storage 접근이 가능합니다. 기자 링크에서는 Edge Function이 토큰 범위 안에서 읽기와 완료 기록만 허용합니다.
+이후에는 앱 우측 상단의 **관리자 계정 관리**에서 ID와 초기 비밀번호를 입력해 관리자를 추가할 수 있습니다. 관리자만 계정을 발급하고 원본 업로드, 게시물 DB 변경, 비공개 Storage 접근을 할 수 있습니다. 기자 링크에서는 Edge Function이 토큰 범위 안에서 읽기와 완료 기록만 허용합니다.
 
 ### Auth URL 설정
 
@@ -117,11 +120,12 @@ git push -u origin main
 
 ### 부장
 
-1. 관리자 로그인
-2. 카드뉴스 폴더 또는 ZIP과 원고를 한꺼번에 드롭
-3. 자동 매칭 신뢰도가 낮은 항목만 드롭다운으로 수정
-4. 제목·본문·URL·크레딧과 이미지 순서를 확인
-5. `배포하기` → 링크 복사 → 카카오톡 전달
+1. 관리자 ID와 비밀번호로 로그인
+2. 필요하면 우측 상단의 관리자 계정 관리에서 다른 관리자를 추가
+3. 카드뉴스 폴더 또는 ZIP과 원고를 한꺼번에 드롭
+4. 자동 매칭 신뢰도가 낮은 항목만 드롭다운으로 수정
+5. 제목·본문·URL·크레딧과 이미지 순서를 확인
+6. `배포하기` → 링크 복사 → 카카오톡 전달
 
 ### 기자
 

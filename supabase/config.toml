@@ -2,3 +2,6 @@ project_id = "kudae-sns-hub"
 
 [functions.public-distribution]
 verify_jwt = false
+
+[functions.admin-users]
+verify_jwt = false

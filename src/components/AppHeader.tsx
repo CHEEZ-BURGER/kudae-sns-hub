@@ -1,7 +1,7 @@
-import { LogOut, ShieldCheck } from 'lucide-react';
+import { LogOut, ShieldCheck, UsersRound } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-export function AppHeader({ reporter = false, email }: { reporter?: boolean; email?: string }) {
+export function AppHeader({ reporter = false, username, onManageAdmins }: { reporter?: boolean; username?: string; onManageAdmins?: () => void }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-white/95 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
@@ -11,7 +11,8 @@ export function AppHeader({ reporter = false, email }: { reporter?: boolean; ema
         </a>
         {reporter ? <span className="tag"><ShieldCheck size={14}/>배포 링크</span> : (
           <div className="flex items-center gap-2">
-            {email && <span className="hidden text-xs text-muted sm:inline">{email}</span>}
+            {username && <span className="hidden text-xs text-muted sm:inline">{username}</span>}
+            {onManageAdmins && <button className="icon-button" title="관리자 계정 관리" onClick={onManageAdmins}><UsersRound size={16}/></button>}
             {supabase && <button className="icon-button" title="로그아웃" onClick={() => supabase?.auth.signOut()}><LogOut size={16}/></button>}
           </div>
         )}
