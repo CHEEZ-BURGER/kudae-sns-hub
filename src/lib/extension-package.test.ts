@@ -11,6 +11,8 @@ describe('Chrome extension package contract', () => {
     expect(manifest.permissions).toEqual(['storage']);
     expect(manifest.host_permissions).toEqual(['https://bcqqokdehkfaiuquktag.supabase.co/*']);
     expect(JSON.stringify(manifest)).not.toMatch(/<all_urls>|downloads|cookies|history|webRequest/);
+    const appScripts = manifest.content_scripts.find((entry: { matches: string[] }) => entry.matches.some((match: string) => match.includes('kudae-sns-hub'))).js;
+    expect(appScripts).toEqual(['shared/constants.js', 'shared/validators.js', 'shared/protocol.js', 'content/app-bridge.js']);
   });
 
   it('injects a complete FileList and emits both input and change events', () => {
