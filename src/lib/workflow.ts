@@ -158,6 +158,7 @@ export function buildDraftPosts(groups: Map<string, File[]>, sections: SourceSec
       groupName,
       sectionId: section?.id ?? '',
       confidence,
+      category: section?.category ?? '보도',
       title: section?.title ?? groupName,
       body: section?.body ?? '',
       articleUrl: section?.articleUrl ?? '',

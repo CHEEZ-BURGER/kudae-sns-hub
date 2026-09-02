@@ -14,7 +14,7 @@ export type PublishInput = {
 };
 
 type PublicationRow = { id: string; created_at: string };
-type StoredPostRow = { id: string; title: string; body: string; article_url: string | null; credits: string | null; group_name: string; match_confidence: number | null; position: number };
+type StoredPostRow = { id: string; category: string; title: string; body: string; article_url: string | null; credits: string | null; group_name: string; match_confidence: number | null; position: number };
 type StoredAssetRow = { id: string; post_id: string; filename: string; mime_type: string; original_path: string; thumbnail_path: string; optimized_path: string | null; position: number };
 
 export type EditablePublication = {
@@ -91,7 +91,7 @@ export async function loadAdminPublication(publicationId: string): Promise<Edita
     .select('id, issue_number, title, share_token').eq('id', publicationId).single();
   if (publicationError) throw publicationError;
   const { data: postData, error: postsError } = await client.from('posts')
-    .select('id, title, body, article_url, credits, group_name, match_confidence, position')
+    .select('id, category, title, body, article_url, credits, group_name, match_confidence, position')
     .eq('publication_id', publicationId).order('position');
   if (postsError) throw postsError;
   const storedPosts = (postData ?? []) as StoredPostRow[];
@@ -132,6 +132,7 @@ export async function loadAdminPublication(publicationId: string): Promise<Edita
       groupName: post.group_name,
       sectionId: '',
       confidence: Number(post.match_confidence ?? 1),
+      category: post.category || '보도',
       title: post.title,
       body: post.body,
       articleUrl: post.article_url ?? '',
@@ -187,6 +188,7 @@ export async function publishDistribution(input: PublishInput, onProgress?: (mes
       const { error: postError } = await client.from('posts').insert({
         id: postId,
         publication_id: publicationId,
+        category: post.category.trim() || '보도',
         title: post.title,
         body: post.body,
         article_url: post.articleUrl || null,

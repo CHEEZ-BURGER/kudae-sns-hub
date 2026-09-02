@@ -40,7 +40,7 @@ Deno.serve(async (request) => {
   if (publication.expires_at && new Date(publication.expires_at).getTime() < Date.now()) return json({ error: '이 배포 링크는 만료되었습니다.' }, 410);
 
   if (input.action !== 'read') return json({ error: '알 수 없는 요청입니다.' }, 400);
-  const { data: posts, error: postsError } = await client.from('posts').select('id, title, body, article_url, credits, position').eq('publication_id', publication.id).order('position');
+  const { data: posts, error: postsError } = await client.from('posts').select('id, category, title, body, article_url, credits, position').eq('publication_id', publication.id).order('position');
   if (postsError) return json({ error: '게시물을 불러오지 못했습니다.' }, 500);
   const postIds = (posts ?? []).map((post) => post.id);
   const { data: assets } = postIds.length ? await client.from('assets').select('id, post_id, filename, size_bytes, mime_type, thumbnail_path, original_path, position').in('post_id', postIds).order('position') : { data: [] };
@@ -56,7 +56,7 @@ Deno.serve(async (request) => {
     publishedAt: publication.published_at,
     expiresAt: publication.expires_at,
     posts: (posts ?? []).map((post) => ({
-      id: post.id, title: post.title, body: post.body, articleUrl: post.article_url ?? '', credits: post.credits ?? '', position: post.position,
+      id: post.id, category: post.category || '보도', title: post.title, body: post.body, articleUrl: post.article_url ?? '', credits: post.credits ?? '', position: post.position,
       assets: (assets ?? []).filter((asset) => asset.post_id === post.id).map((asset) => ({
         id: asset.id, filename: asset.filename, sizeBytes: Number(asset.size_bytes), mimeType: asset.mime_type, position: asset.position,
         thumbUrl: signedMap.get(asset.thumbnail_path) ?? '', originalUrl: signedMap.get(asset.original_path) ?? '',

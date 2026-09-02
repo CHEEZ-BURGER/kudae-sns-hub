@@ -21,6 +21,7 @@ export type DraftPost = {
   groupName: string;
   sectionId: string;
   confidence: number;
+  category: string;
   title: string;
   body: string;
   articleUrl: string;
@@ -40,6 +41,7 @@ export type DistributionAsset = {
 
 export type DistributionPost = {
   id: string;
+  category: string;
   title: string;
   body: string;
   articleUrl: string;
