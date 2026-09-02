@@ -4,23 +4,27 @@ const api = globalThis.KudaeSNS;
 const controllers = new Map();
 const targetPorts = new Map();
 const runningJobs = new Set();
-
 const jobKey = (jobId) => `job:${jobId}`;
 
-async function getJob(jobId) {
-  return (await chrome.storage.session.get(jobKey(jobId)))[jobKey(jobId)] || null;
-}
+const platformForUrl = (rawUrl = '') => {
+  try {
+    const host = new URL(rawUrl).hostname.replace(/^www\./, '');
+    if (host === 'instagram.com') return 'instagram';
+    if (host === 'facebook.com' || host === 'web.facebook.com') return 'facebook';
+    if (host === 'koreapas.com') return 'koreapas';
+    if (host === 'everytime.kr') return 'everytime';
+    if (host === 'x.com' || host === 'twitter.com') return 'x';
+    if (host === 'youtube.com' || host === 'studio.youtube.com') return 'youtube';
+  } catch { /* Invalid tab URL. */ }
+  return null;
+};
 
-async function saveJob(job) {
-  await chrome.storage.session.set({ [jobKey(job.jobId)]: job });
-}
-
+async function getJob(jobId) { return (await chrome.storage.session.get(jobKey(jobId)))[jobKey(jobId)] || null; }
+async function saveJob(job) { await chrome.storage.session.set({ [jobKey(job.jobId)]: job }); }
 async function deleteJob(jobId) {
   await chrome.storage.session.remove(jobKey(jobId));
-  controllers.delete(jobId);
-  runningJobs.delete(jobId);
+  controllers.delete(jobId); runningJobs.delete(jobId);
 }
-
 async function updateJob(jobId, patch) {
   const job = await getJob(jobId);
   if (!job) return null;
@@ -30,9 +34,14 @@ async function updateJob(jobId, patch) {
 }
 
 async function relay(job, message) {
-  if (!job?.sourceTabId) return;
-  try { await chrome.tabs.sendMessage(job.sourceTabId, { type: 'EXTENSION_EVENT', event: message }); }
-  catch { /* The source page may have been closed. */ }
+  if (job?.sourceTabId) {
+    try { await chrome.tabs.sendMessage(job.sourceTabId, { type: 'EXTENSION_EVENT', event: message }); }
+    catch { /* The source page may have been closed. */ }
+  }
+  if (job?.sourcePanel) {
+    try { await chrome.runtime.sendMessage({ type: 'PANEL_EVENT', event: message }); }
+    catch { /* The panel may have been closed. */ }
+  }
 }
 
 async function setState(job, state, userMessage, extra = {}) {
@@ -45,7 +54,7 @@ async function failJob(job, error) {
   await updateJob(job.jobId, { state: api.STATES.ERROR, error, updatedAt: Date.now() });
   await relay(job, api.failure(job.jobId, error));
   try { targetPorts.get(job.targetTabId)?.postMessage({ type: 'JOB_ERROR', jobId: job.jobId, error }); }
-  catch { /* The Instagram tab may have been closed. */ }
+  catch { /* The target tab may have been closed. */ }
   await deleteJob(job.jobId);
 }
 
@@ -53,20 +62,12 @@ async function cleanupStaleJobs() {
   const values = await chrome.storage.session.get(null);
   const now = Date.now();
   await Promise.all(Object.entries(values).map(async ([key, job]) => {
-    if (!key.startsWith('job:') || !job?.createdAt || now - job.createdAt <= api.JOB_TTL_MS) return;
-    await chrome.storage.session.remove(key);
+    if (key.startsWith('job:') && job?.createdAt && now - job.createdAt > api.JOB_TTL_MS) await chrome.storage.session.remove(key);
   }));
 }
 
-async function createUploadJob(rawJob, sender) {
-  const senderUrl = sender.tab?.url ? new URL(sender.tab.url) : null;
-  if (!sender.tab?.id || !senderUrl || !api.ALLOWED_APP_ORIGINS.has(senderUrl.origin)) {
-    throw api.extensionError('INVALID_JOB', '허용된 고대신문 배포 페이지에서만 실행할 수 있습니다.');
-  }
-  const checked = api.validateJob(rawJob);
-  if (!checked.ok) throw checked.error;
+async function persistJob(checked, source) {
   await cleanupStaleJobs();
-
   const job = {
     jobId: checked.value.jobId,
     target: checked.value.target,
@@ -74,71 +75,83 @@ async function createUploadJob(rawJob, sender) {
     updatedAt: Date.now(),
     assets: checked.value.assets,
     caption: checked.value.caption,
-    sourceTabId: sender.tab.id,
-    sourceOrigin: senderUrl.origin,
-    targetTabId: null,
+    sourceTabId: source.sourceTabId || null,
+    sourceOrigin: source.sourceOrigin || null,
+    sourcePanel: Boolean(source.sourcePanel),
+    targetTabId: source.targetTabId || null,
     state: api.STATES.QUEUED,
   };
   await saveJob(job);
   await relay(job, api.event('SNS_UPLOAD_ACK', { jobId: job.jobId, accepted: true }));
-  await setState(job, api.STATES.OPENING_TARGET, 'Instagram을 여는 중입니다.');
+  return job;
+}
 
+async function createUploadJob(rawJob, sender) {
+  const senderUrl = sender.tab?.url ? new URL(sender.tab.url) : null;
+  if (!sender.tab?.id || !senderUrl || !api.ALLOWED_APP_ORIGINS.has(senderUrl.origin)) throw api.extensionError('INVALID_JOB', '허용된 고대신문 배포 페이지에서만 실행할 수 있습니다.');
+  const checked = api.validateJob(rawJob);
+  if (!checked.ok) throw checked.error;
+  const job = await persistJob(checked, { sourceTabId: sender.tab.id, sourceOrigin: senderUrl.origin });
+  await setState(job, api.STATES.OPENING_TARGET, 'Instagram을 여는 중입니다.');
   let targetTab;
   try { targetTab = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: true }); }
-  catch (error) {
-    await deleteJob(job.jobId);
-    throw api.extensionError('TARGET_TAB_FAILED', 'Instagram 탭을 열지 못했습니다.', String(error));
-  }
-  if (!targetTab.id) {
-    await deleteJob(job.jobId);
-    throw api.extensionError('TARGET_TAB_FAILED', 'Instagram 탭 번호를 확인하지 못했습니다.');
-  }
+  catch (error) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'Instagram 탭을 열지 못했습니다.', String(error)); }
+  if (!targetTab.id) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'Instagram 탭 번호를 확인하지 못했습니다.'); }
   await updateJob(job.jobId, { targetTabId: targetTab.id, updatedAt: Date.now() });
+  return job.jobId;
+}
+
+async function createPanelJob(rawJob, targetTabId, sender) {
+  if (!sender.url?.startsWith(chrome.runtime.getURL('sidepanel/'))) throw api.extensionError('INVALID_JOB', '배포 패널에서만 실행할 수 있습니다.');
+  const checked = api.validateJob(rawJob);
+  if (!checked.ok) throw checked.error;
+  const tab = await chrome.tabs.get(targetTabId);
+  const detected = platformForUrl(tab.url);
+  if (!detected || detected !== checked.value.target) throw api.extensionError('TARGET_TAB_FAILED', '현재 탭이 선택한 SNS와 일치하지 않습니다. SNS 작성 화면을 먼저 열어 주세요.');
+  const job = await persistJob(checked, { sourcePanel: true, targetTabId });
+  await setState(job, api.STATES.OPENING_TARGET, `${api.TARGET_LABELS[job.target]} 작성창에 연결 중입니다.`);
+  const port = targetPorts.get(targetTabId);
+  if (port) await runJob(job, port);
+  else await setState(job, api.STATES.WAITING_FOR_COMPOSER, `${api.TARGET_LABELS[job.target]} 탭을 새로고침한 뒤 다시 시도해 주세요.`);
   return job.jobId;
 }
 
 async function findJobForTarget(targetTabId) {
   const values = await chrome.storage.session.get(null);
-  return Object.entries(values)
-    .filter(([key, job]) => key.startsWith('job:') && job?.targetTabId === targetTabId)
-    .map(([, job]) => job)
-    .sort((left, right) => right.createdAt - left.createdAt)[0] || null;
+  return Object.entries(values).filter(([key, job]) => key.startsWith('job:') && job?.targetTabId === targetTabId)
+    .map(([, job]) => job).sort((left, right) => right.createdAt - left.createdAt)[0] || null;
 }
 
-async function fetchWithRetry(asset, index, signal) {
+async function fetchWithRetry(job, asset, index, signal) {
   let lastError;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const response = await fetch(asset.url, { signal, cache: 'no-store', credentials: 'omit' });
-      if (!response.ok) {
-        const code = response.status === 401 || response.status === 403 ? 'SIGNED_URL_EXPIRED' : 'FETCH_FAILED';
-        throw api.extensionError(code, `${index + 1}번 이미지를 불러오지 못했습니다.`, `HTTP ${response.status}`, { assetIndex: index });
-      }
+      if (!response.ok) throw api.extensionError(response.status === 401 || response.status === 403 ? 'SIGNED_URL_EXPIRED' : 'FETCH_FAILED', `${index + 1}번 파일을 불러오지 못했습니다.`, `HTTP ${response.status}`, { assetIndex: index });
       const blob = await response.blob();
-      if (blob.size > api.MAX_FILE_BYTES) throw api.extensionError('FILE_TOO_LARGE', `${index + 1}번 이미지가 50MB를 넘습니다.`, `${blob.size} bytes`, { assetIndex: index });
+      if (blob.size > api.MAX_FILE_BYTES) throw api.extensionError('FILE_TOO_LARGE', `${index + 1}번 파일이 500MB를 넘습니다.`, `${blob.size} bytes`, { assetIndex: index });
       const mimeType = (blob.type || response.headers.get('content-type') || asset.mimeType).split(';')[0].trim().toLowerCase();
-      if (!api.allowedMimeTypes.has(mimeType)) throw api.extensionError('UNSUPPORTED_MIME', `${index + 1}번 이미지 형식을 지원하지 않습니다.`, mimeType, { assetIndex: index });
+      const allowed = job.target === 'youtube' ? api.videoMimeTypes : api.imageMimeTypes;
+      if (!allowed.has(mimeType)) throw api.extensionError('UNSUPPORTED_MIME', `${index + 1}번 파일 형식을 지원하지 않습니다.`, mimeType, { assetIndex: index });
       return new File([blob], asset.filename, { type: mimeType, lastModified: Date.now() });
     } catch (error) {
-      if (signal.aborted) throw api.extensionError('USER_CANCELLED', '업로드를 취소했습니다.');
+      if (signal.aborted) throw api.extensionError('USER_CANCELLED', '작업을 취소했습니다.');
       lastError = error;
       if (attempt < 2) await new Promise((resolve) => setTimeout(resolve, 350 * (attempt + 1)));
     }
   }
-  throw lastError || api.extensionError('FETCH_FAILED', `${index + 1}번 이미지를 불러오지 못했습니다.`, '', { assetIndex: index });
+  throw lastError || api.extensionError('FETCH_FAILED', `${index + 1}번 파일을 불러오지 못했습니다.`, '', { assetIndex: index });
 }
 
 async function fetchFiles(job, signal) {
   const files = new Array(job.assets.length);
-  let nextIndex = 0;
-  let completed = 0;
+  let nextIndex = 0; let completed = 0;
   const worker = async () => {
     while (nextIndex < job.assets.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      files[index] = await fetchWithRetry(job.assets[index], index, signal);
+      const index = nextIndex++;
+      files[index] = await fetchWithRetry(job, job.assets[index], index, signal);
       completed += 1;
-      await relay(job, api.progress(job.jobId, api.STATES.FETCHING, `이미지 준비 중 ${completed}/${job.assets.length}`, { current: completed, total: job.assets.length }));
+      await relay(job, api.progress(job.jobId, api.STATES.FETCHING, `원본 준비 중 ${completed}/${job.assets.length}`, { current: completed, total: job.assets.length }));
     }
   };
   await Promise.all(Array.from({ length: Math.min(api.FETCH_CONCURRENCY, job.assets.length) }, worker));
@@ -148,48 +161,53 @@ async function fetchFiles(job, signal) {
 async function runJob(job, port) {
   if (runningJobs.has(job.jobId)) return;
   runningJobs.add(job.jobId);
-  const controller = new AbortController();
-  controllers.set(job.jobId, controller);
+  const controller = new AbortController(); controllers.set(job.jobId, controller);
   let files = [];
   try {
-    await setState(job, api.STATES.FETCHING, `이미지 준비 중 0/${job.assets.length}`, { current: 0, total: job.assets.length });
+    await setState(job, api.STATES.FETCHING, `원본 준비 중 0/${job.assets.length}`, { current: 0, total: job.assets.length });
     files = await fetchFiles(job, controller.signal);
-    port.postMessage({ type: 'JOB_START', jobId: job.jobId, total: files.length, createdAt: job.createdAt });
+    port.postMessage({ type: 'JOB_START', jobId: job.jobId, target: job.target, total: files.length, createdAt: job.createdAt });
     files.forEach((file, index) => port.postMessage({ type: 'ASSET', jobId: job.jobId, index, total: files.length, file }));
     port.postMessage({ type: 'JOB_END', jobId: job.jobId, total: files.length });
     files.length = 0;
   } catch (error) {
     files.length = 0;
-    const normalized = error?.code ? error : api.extensionError('FETCH_FAILED', '이미지를 준비하지 못했습니다.', String(error));
-    await failJob(job, normalized);
+    await failJob(job, error?.code ? error : api.extensionError('FETCH_FAILED', '원본을 준비하지 못했습니다.', String(error)));
   }
 }
 
 async function cancelJob(jobId) {
-  const job = await getJob(jobId);
-  if (!job) return;
+  const job = await getJob(jobId); if (!job) return;
   controllers.get(jobId)?.abort();
   targetPorts.get(job.targetTabId)?.postMessage({ type: 'JOB_CANCEL', jobId });
-  await relay(job, api.event('SNS_UPLOAD_ERROR', { jobId, code: 'USER_CANCELLED', userMessage: '업로드를 취소했습니다.' }));
+  await relay(job, api.event('SNS_UPLOAD_ERROR', { jobId, code: 'USER_CANCELLED', userMessage: '작업을 취소했습니다.' }));
   await deleteJob(jobId);
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === 'APP_PING') {
     const origin = sender.tab?.url ? new URL(sender.tab.url).origin : '';
-    sendResponse({ available: api.ALLOWED_APP_ORIGINS.has(origin), version: chrome.runtime.getManifest().version });
-    return false;
+    sendResponse({ available: api.ALLOWED_APP_ORIGINS.has(origin), version: chrome.runtime.getManifest().version }); return false;
+  }
+  if (message?.type === 'OPEN_SIDE_PANEL') {
+    const origin = sender.tab?.url ? new URL(sender.tab.url).origin : '';
+    if (!sender.tab?.windowId || !api.ALLOWED_APP_ORIGINS.has(origin)) { sendResponse({ opened: false }); return false; }
+    chrome.storage.session.set({ pendingDistributionLink: message.link || sender.tab.url })
+      .then(() => chrome.sidePanel.open({ windowId: sender.tab.windowId }))
+      .then(() => sendResponse({ opened: true })).catch((error) => sendResponse({ opened: false, error: String(error) }));
+    return true;
   }
   if (message?.type === 'SNS_UPLOAD_REQUEST') {
-    createUploadJob(message.payload, sender)
-      .then((jobId) => sendResponse({ accepted: true, jobId }))
+    createUploadJob(message.payload, sender).then((jobId) => sendResponse({ accepted: true, jobId }))
       .catch((error) => sendResponse({ accepted: false, error: error?.code ? error : api.extensionError('INVALID_JOB', '업로드 요청을 시작하지 못했습니다.', String(error)) }));
     return true;
   }
-  if (message?.type === 'SNS_UPLOAD_CANCEL') {
-    cancelJob(message.jobId).then(() => sendResponse({ cancelled: true }));
+  if (message?.type === 'PANEL_UPLOAD_REQUEST') {
+    createPanelJob(message.payload, message.targetTabId, sender).then((jobId) => sendResponse({ accepted: true, jobId }))
+      .catch((error) => sendResponse({ accepted: false, error: error?.code ? error : api.extensionError('INVALID_JOB', 'SNS 전달을 시작하지 못했습니다.', String(error)) }));
     return true;
   }
+  if (message?.type === 'SNS_UPLOAD_CANCEL') { cancelJob(message.jobId).then(() => sendResponse({ cancelled: true })); return true; }
   return false;
 });
 
@@ -200,44 +218,37 @@ chrome.runtime.onConnect.addListener((port) => {
   port.onDisconnect.addListener(() => targetPorts.delete(tabId));
   port.onMessage.addListener(async (message) => {
     if (message?.type === 'FIXTURE_REQUEST' && Array.isArray(message.urls)) {
-      const urls = message.urls.slice(0, 10);
-      const files = [];
+      const urls = message.urls.slice(0, 10); const files = [];
       for (let index = 0; index < urls.length; index += 1) {
-        const response = await fetch(urls[index]);
-        const blob = await response.blob();
+        const response = await fetch(urls[index]); const blob = await response.blob();
         files.push(new File([blob], `card-${String(index + 1).padStart(2, '0')}.png`, { type: 'image/png' }));
       }
       const fixtureJobId = `fixture-${crypto.randomUUID()}`;
-      port.postMessage({ type: 'JOB_START', jobId: fixtureJobId, total: files.length, createdAt: Date.now() });
+      port.postMessage({ type: 'JOB_START', jobId: fixtureJobId, target: 'fixture', total: files.length, createdAt: Date.now() });
       files.forEach((file, index) => port.postMessage({ type: 'ASSET', jobId: fixtureJobId, index, total: files.length, file }));
-      port.postMessage({ type: 'JOB_END', jobId: fixtureJobId, total: files.length });
-      files.length = 0;
-      return;
+      port.postMessage({ type: 'JOB_END', jobId: fixtureJobId, total: files.length }); files.length = 0; return;
     }
     const job = message?.jobId ? await getJob(message.jobId) : await findJobForTarget(tabId);
-    if (message?.type === 'TARGET_READY') {
-      const pending = job || await findJobForTarget(tabId);
-      if (pending) await runJob(pending, port);
-      return;
-    }
+    if (message?.type === 'TARGET_READY') { const pending = job || await findJobForTarget(tabId); if (pending) await runJob(pending, port); return; }
     if (!job) return;
     if (message.type === 'TARGET_CANCEL') { await cancelJob(job.jobId); return; }
     if (message.type === 'TARGET_PROGRESS') {
       await updateJob(job.jobId, { state: message.state, updatedAt: Date.now() });
-      await relay(job, api.progress(job.jobId, message.state, message.userMessage, message.extra || {}));
-      return;
+      await relay(job, api.progress(job.jobId, message.state, message.userMessage, message.extra || {})); return;
     }
     if (message.type === 'TARGET_COMPLETE') {
-      await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, originalRatioSelected: Boolean(message.originalRatioSelected), userMessage: message.userMessage || `이미지 ${message.count}장 전달 완료` }));
-      await deleteJob(job.jobId);
-      return;
+      await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, originalRatioSelected: Boolean(message.originalRatioSelected), userMessage: message.userMessage || `원본 ${message.count}개 전달 완료` }));
+      await deleteJob(job.jobId); return;
     }
     if (message.type === 'TARGET_ERROR') await failJob(job, message.error);
   });
   port.postMessage({ type: 'REQUEST_READY' });
 });
 
-chrome.action.onClicked.addListener(() => chrome.tabs.create({ url: chrome.runtime.getURL('fixture/index.html') }));
-chrome.runtime.onStartup.addListener(cleanupStaleJobs);
-chrome.runtime.onInstalled.addListener(cleanupStaleJobs);
-void cleanupStaleJobs();
+async function initialize() {
+  await cleanupStaleJobs();
+  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+}
+chrome.runtime.onStartup.addListener(initialize);
+chrome.runtime.onInstalled.addListener(initialize);
+void initialize();

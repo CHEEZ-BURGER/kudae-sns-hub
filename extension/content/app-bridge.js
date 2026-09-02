@@ -27,6 +27,15 @@
       }
       return;
     }
+    if (type === 'SNS_OPEN_PANEL') {
+      try {
+        const response = await chrome.runtime.sendMessage({ type: 'OPEN_SIDE_PANEL', link: location.href });
+        if (!response?.opened) post(api.failure('', api.extensionError('PANEL_OPEN_FAILED', '배포 패널을 열지 못했습니다. 확장 아이콘을 눌러 열어 주세요.')));
+      } catch (error) {
+        post(api.failure('', api.extensionError('PANEL_OPEN_FAILED', '배포 패널을 열지 못했습니다.', String(error))));
+      }
+      return;
+    }
     if (type === 'SNS_UPLOAD_CANCEL' && typeof payload?.jobId === 'string') {
       await chrome.runtime.sendMessage({ type: 'SNS_UPLOAD_CANCEL', jobId: payload.jobId }).catch(() => undefined);
     }

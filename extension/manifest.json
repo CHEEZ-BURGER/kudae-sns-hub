@@ -1,19 +1,33 @@
 {
   "manifest_version": 3,
   "name": "고대신문 SNS Upload Helper",
-  "description": "고대신문 SNS 배포실의 이미지를 디스크 저장 없이 Instagram 게시물 입력에 전달합니다.",
-  "version": "1.0.2",
+  "description": "배포 링크를 오른쪽 패널에서 열고 고대신문 원본을 SNS 작성창에 전달합니다.",
+  "version": "2.0.0",
   "minimum_chrome_version": "148",
   "message_serialization": "structured_clone",
-  "permissions": ["storage"],
+  "permissions": ["storage", "sidePanel", "clipboardWrite"],
   "host_permissions": [
-    "https://bcqqokdehkfaiuquktag.supabase.co/*"
+    "https://bcqqokdehkfaiuquktag.supabase.co/*",
+    "https://www.instagram.com/*",
+    "https://instagram.com/*",
+    "https://www.facebook.com/*",
+    "https://web.facebook.com/*",
+    "https://www.koreapas.com/*",
+    "https://koreapas.com/*",
+    "https://everytime.kr/*",
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://www.youtube.com/*",
+    "https://studio.youtube.com/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"
   },
   "action": {
-    "default_title": "고대신문 SNS Upload Helper 테스트"
+    "default_title": "고대신문 배포 패널 열기"
+  },
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
   },
   "content_scripts": [
     {
@@ -42,6 +56,28 @@
         "content/sns-base.js",
         "content/overlay.js",
         "content/instagram.js"
+      ],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "https://www.facebook.com/*",
+        "https://web.facebook.com/*",
+        "https://www.koreapas.com/*",
+        "https://koreapas.com/*",
+        "https://everytime.kr/*",
+        "https://x.com/*",
+        "https://twitter.com/*",
+        "https://www.youtube.com/*",
+        "https://studio.youtube.com/*"
+      ],
+      "js": [
+        "shared/constants.js",
+        "shared/validators.js",
+        "content/sns-base.js",
+        "content/overlay.js",
+        "content/site-upload.js"
       ],
       "run_at": "document_idle",
       "world": "ISOLATED"

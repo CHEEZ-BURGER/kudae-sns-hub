@@ -4,15 +4,40 @@ import { describe, expect, it } from 'vitest';
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
 describe('Chrome extension package contract', () => {
-  it('uses Chrome 148 structured clone with minimal permissions', () => {
+  it('uses Chrome 148 structured clone with a narrowly scoped side panel', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.permissions).toEqual(['storage']);
-    expect(manifest.host_permissions).toEqual(['https://bcqqokdehkfaiuquktag.supabase.co/*']);
+    expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
+    expect(manifest.side_panel.default_path).toBe('sidepanel/index.html');
+    expect(manifest.host_permissions).toContain('https://bcqqokdehkfaiuquktag.supabase.co/*');
+    expect(manifest.host_permissions).toContain('https://www.facebook.com/*');
+    expect(manifest.host_permissions).toContain('https://www.koreapas.com/*');
+    expect(manifest.host_permissions).toContain('https://everytime.kr/*');
+    expect(manifest.host_permissions).toContain('https://x.com/*');
+    expect(manifest.host_permissions).toContain('https://studio.youtube.com/*');
     expect(JSON.stringify(manifest)).not.toMatch(/<all_urls>|downloads|cookies|history|webRequest/);
     const appScripts = manifest.content_scripts.find((entry: { matches: string[] }) => entry.matches.some((match: string) => match.includes('kudae-sns-hub'))).js;
     expect(appScripts).toEqual(['shared/constants.js', 'shared/validators.js', 'shared/protocol.js', 'content/app-bridge.js']);
+  });
+
+  it('loads a pasted distribution link in session-only panel state', () => {
+    const panel = read('extension/sidepanel/sidepanel.js');
+    expect(panel).toContain("url.origin !== 'https://cheez-burger.github.io'");
+    expect(panel).toContain('chrome.storage.session');
+    expect(panel).toContain("type: 'PANEL_UPLOAD_REQUEST'");
+    expect(panel).toContain('navigator.clipboard.write');
+    expect(panel).not.toContain('chrome.storage.local');
+  });
+
+  it('injects FileList on supported non-Instagram sites without private framework hooks', () => {
+    const adapter = read('extension/content/site-upload.js');
+    expect(adapter).toContain('new DataTransfer()');
+    expect(adapter).toContain("HTMLInputElement.prototype, 'files'");
+    expect(adapter).toContain("new Event('input', { bubbles: true, composed: true })");
+    expect(adapter).toContain("new Event('change', { bubbles: true, composed: true })");
+    expect(adapter).toContain('new MutationObserver');
+    expect(adapter).not.toMatch(/__reactFiber\$|__reactProps\$/);
   });
 
   it('injects a complete FileList and emits both input and change events', () => {

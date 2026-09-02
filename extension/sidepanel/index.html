@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>고대신문 배포 패널</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="brand"><div class="mark">KU</div><div><b>고대신문 배포 패널</b><span>링크 하나로 SNS 업로드</span></div><em id="version"></em></header>
+  <main>
+    <form id="link-form" class="link-card">
+      <label for="distribution-link">부장이 공유한 배포 링크</label>
+      <div class="link-row"><input id="distribution-link" type="url" autocomplete="off" placeholder="카카오톡 링크를 붙여 넣으세요" required><button type="submit">불러오기</button></div>
+      <p id="link-status">링크는 이 브라우저 세션에서만 기억합니다.</p>
+    </form>
+    <section id="empty" class="empty"><strong>배포 링크를 붙여 넣어 시작하세요.</strong><span>글을 불러온 뒤 SNS 탭으로 이동해도 이 패널은 그대로 유지됩니다.</span></section>
+    <section id="workspace" hidden>
+      <header class="issue"><div><span id="issue-number"></span><h1 id="issue-title"></h1></div><strong id="post-count"></strong></header>
+      <section class="site-card"><div><i id="site-dot"></i><p><b id="site-name">지원 SNS를 열어 주세요</b><span id="site-help">Facebook · 고파스 · Instagram · YouTube · X · 에타</span></p></div><button id="refresh-site" type="button" class="icon-button" title="현재 탭 다시 확인">↻</button></section>
+      <article class="post-card">
+        <div class="post-head"><span id="post-position"></span><h2 id="post-title"></h2></div>
+        <div id="media-rail" class="media-rail"></div>
+        <div class="copy-grid">
+          <button id="copy-title" type="button" class="secondary">SNS 제목 복사</button>
+          <button id="copy-koreapas" type="button" class="secondary">고파스 제목 복사</button>
+          <button id="copy-body" type="button" class="primary full">제목 + 본문 복사</button>
+        </div>
+        <section class="paste-card"><div><b id="paste-label">이미지 순차 복사</b><span id="paste-help">1번부터 한 장씩 원본을 복사합니다.</span></div><button id="copy-next-image" type="button" class="secondary">1번 복사</button></section>
+        <button id="inject-files" type="button" class="primary upload">현재 SNS에 원본 넣기</button>
+        <div id="upload-status" class="upload-status" hidden><b></b><span></span><i><u></u></i></div>
+        <details class="body-preview"><summary>본문 미리보기</summary><pre id="post-body"></pre></details>
+      </article>
+      <nav class="pager"><button id="previous-post" type="button" class="secondary">← 이전 글</button><span id="pager-text"></span><button id="next-post" type="button" class="primary">다음 글 →</button></nav>
+    </section>
+  </main>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <footer><a href="../fixture/index.html" target="_blank">확장 진단 테스트</a><span>최종 게시 버튼은 직접 눌러 주세요.</span></footer>
+  <script src="../shared/constants.js"></script>
+  <script src="../shared/validators.js"></script>
+  <script src="runtime-config.js"></script>
+  <script src="sidepanel.js"></script>
+</body>
+</html>

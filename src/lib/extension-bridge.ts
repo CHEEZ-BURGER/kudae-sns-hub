@@ -52,7 +52,7 @@ export function buildInstagramJob(assets: DistributionAsset[], now = Date.now(),
   };
 }
 
-export function postExtensionMessage(type: 'SNS_EXTENSION_PING' | 'SNS_UPLOAD_REQUEST' | 'SNS_UPLOAD_CANCEL', payload: unknown = {}) {
+export function postExtensionMessage(type: 'SNS_EXTENSION_PING' | 'SNS_OPEN_PANEL' | 'SNS_UPLOAD_REQUEST' | 'SNS_UPLOAD_CANCEL', payload: unknown = {}) {
   window.postMessage({ source: APP_SOURCE, type, payload }, location.origin);
 }
 

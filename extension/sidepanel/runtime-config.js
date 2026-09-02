@@ -1,0 +1,1 @@
+globalThis.KudaeSNSConfig = { supabaseUrl: '', publishableKey: '' };

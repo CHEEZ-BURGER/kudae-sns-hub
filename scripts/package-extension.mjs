@@ -11,7 +11,14 @@ async function addDirectory(directory) {
   await Promise.all(entries.map(async (entry) => {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) return addDirectory(path);
-    zip.file(relative(source, path).replaceAll('\\', '/'), await readFile(path));
+    const zipPath = relative(source, path).replaceAll('\\', '/');
+    if (zipPath === 'sidepanel/runtime-config.js') {
+      const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+      const publishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+      zip.file(zipPath, `globalThis.KudaeSNSConfig = ${JSON.stringify({ supabaseUrl, publishableKey })};\n`);
+      return;
+    }
+    zip.file(zipPath, await readFile(path));
   }));
 }
 

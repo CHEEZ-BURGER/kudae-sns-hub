@@ -1,50 +1,46 @@
-# 고대신문 SNS Upload Helper
+# 고대신문 SNS Upload Helper 2.0
 
-고대신문 SNS 배포실에서 선택한 카드뉴스 이미지를 로컬 디스크에 저장하지 않고 Chrome 메모리의 `Blob`/`File`로 Instagram Web 게시물 입력에 전달하는 Manifest V3 확장 프로그램입니다.
+부장이 공유한 고대신문 SNS 배포 링크를 Chrome 오른쪽 패널에서 열고, 글 이동·제목/본문 복사·이미지 순차 복사·원본 파일 전달을 한 화면에서 처리하는 무료 사내용 확장입니다.
 
-## 무료 설치
+## 설치 또는 1.x에서 업데이트
 
-Chrome 웹스토어를 사용하지 않는 사내용 확장이므로 비용은 들지 않지만, 각 PC에서 한 번 설치해야 합니다.
+1. 배포실에서 `Chrome 확장 다운로드`를 눌러 최신 ZIP을 받습니다.
+2. ZIP을 별도 폴더에 압축 해제합니다.
+3. Chrome 주소창에서 `chrome://extensions`를 엽니다.
+4. 기존 1.x 확장이 있으면 `삭제`합니다. 기존 폴더에 덮어쓰는 대신 2.0 폴더를 새로 선택하는 편이 안전합니다.
+5. 우측 상단 `개발자 모드` → `압축해제된 확장 프로그램을 로드합니다` → 압축을 푼 폴더 중 `manifest.json`이 보이는 폴더를 선택합니다.
+6. 확장 아이콘을 눌러 오른쪽에 `고대신문 배포 패널`이 열리는지 확인합니다.
 
-1. 배포실에서 `Chrome 확장 다운로드`를 눌러 ZIP을 받습니다.
-2. ZIP을 원하는 폴더에 압축 해제합니다. 이 폴더는 확장 프로그램 코드 폴더이며 카드뉴스 이미지 저장 공간이 아닙니다.
-3. Chrome 주소창에 `chrome://extensions`를 입력합니다.
-4. 우측 상단 `개발자 모드`를 켭니다.
-5. `압축해제된 확장 프로그램을 로드합니다`를 누르고, 압축을 푼 폴더 안에서 `manifest.json`이 보이는 폴더를 선택합니다.
-6. 배포실 페이지를 한 번 새로고침합니다.
-
-Chrome 148 이상에서만 동작합니다. Android/iPhone Chrome은 확장 프로그램을 지원하지 않으므로 모바일 기자는 기존 `순차 복사` 또는 `원본 저장`을 사용합니다.
+Chrome 148 이상 PC에서만 동작합니다. Android/iPhone Chrome은 확장 프로그램을 지원하지 않으므로 모바일 기자는 기존 배포 링크의 순차 복사·원본 저장을 사용합니다.
 
 ## 사용
 
-1. 기자용 배포 링크에서 게시물을 엽니다.
-2. `Instagram에 바로 넣기`를 누릅니다.
-3. Instagram 탭이 열리면, 자동으로 작성 창을 찾지 못한 경우 `만들기 → 게시물`을 직접 엽니다.
-4. 이미지가 들어오면 확장이 Instagram의 비율 메뉴에서 `원본`을 자동 선택합니다.
-5. 화면에서 원본 비율과 본문을 확인하고 최종 게시 버튼은 직접 누릅니다.
+1. Chrome 도구 모음의 고대신문 확장 아이콘을 눌러 오른쪽 패널을 엽니다.
+2. 부장이 카카오톡으로 준 `https://cheez-burger.github.io/kudae-sns-hub/#/d/...` 링크를 붙여 넣고 `불러오기`를 누릅니다. 배포 페이지에서 `배포 패널 열기`를 눌러도 링크가 자동 입력됩니다.
+3. 패널에서 `SNS 제목 복사`, `고파스 제목 복사`, `제목 + 본문 복사`를 사용합니다.
+4. Chrome 본문 탭에서 Facebook, 고파스, Instagram, YouTube Studio, X, 에타 중 업로드할 곳을 엽니다. 패널의 초록 점이 해당 사이트를 감지합니다.
+5. SNS의 새 게시물/사진 첨부 화면을 연 뒤 `현재 SNS에 원본 넣기`를 누릅니다. 확장이 입력칸을 찾지 못하면 안내에 따라 사진·파일 첨부 버튼을 한 번 누릅니다.
+6. 내용과 이미지 순서·비율을 확인하고 최종 게시 버튼은 직접 누릅니다.
+7. 사이트 화면 변경으로 원본 넣기가 실패할 때는 패널의 `이미지 순차 복사`를 눌러 SNS 작성창에 `Ctrl+V` 합니다.
 
-Instagram UI 언어·버전 차이로 비율 버튼을 찾지 못하면 완료 알림에 `비율 확인 필요`가 표시됩니다. 이때 작성창 왼쪽 아래의 비율 버튼을 눌러 `원본`을 한 번 선택하세요. 여러 장의 가로세로 비율이 서로 다르면 Instagram 캐러셀 정책상 첫 이미지의 비율이 게시물 전체에 적용됩니다.
-
-확장 아이콘을 누르면 1장/10장 메모리 파일 주입 fixture가 열립니다.
+X는 게시물당 최대 4장, YouTube는 영상 1개를 전달합니다. Instagram은 원본 비율 선택을 추가로 시도합니다. 각 사이트 정책이나 화면 개편으로 파일 입력을 받지 않는 경우에도 제목/본문 복사와 순차 이미지 복사는 계속 사용할 수 있습니다.
 
 ## 보안 및 데이터 경계
 
-- 요청 권한: `storage.session`, 고대신문 배포실, Instagram, 해당 Supabase Storage 호스트만 사용
+- 요청 권한: 세션 저장소, 오른쪽 패널, 클립보드 쓰기, 여섯 SNS와 고대신문 Supabase 호스트
 - 사용하지 않는 권한: `downloads`, `cookies`, `history`, `webRequest`, `<all_urls>`
-- Storage에는 작업 번호·URL·파일명·상태만 최대 10분 동안 보관
-- 이미지 바이너리는 디스크·`chrome.storage`·Base64에 저장하지 않고 RAM에서만 처리
-- Supabase service role key와 Instagram 로그인 정보에 접근하지 않음
-- 최종 게시 버튼을 자동으로 누르지 않음
+- 배포 링크·현재 글 번호·작업 상태는 Chrome 세션에서만 보관하고, 브라우저 종료 뒤 유지하지 않음
+- 원본 바이너리는 디스크·Chrome 저장소·Base64에 남기지 않고 RAM에서만 처리
+- SNS 로그인 정보나 쿠키에 접근하지 않으며 최종 게시 버튼을 자동으로 누르지 않음
 
 ## 구조
 
 ```text
-background/service-worker.js  작업 상태·탭·fetch·File 전달
-content/app-bridge.js          GitHub Pages와 확장 프로그램 연결
-content/instagram.js           Instagram semantic selector와 FileList 주입
-content/overlay.js             진행·대기·오류·취소 UI
-shared/                        프로토콜·상태·보안 검증
-fixture/                       1장/10장 자동 주입 테스트
+sidepanel/                    배포 링크·글 이동·복사·현재 탭 UI
+background/service-worker.js 원본 fetch·메모리 File 전달·작업 상태
+content/app-bridge.js         GitHub Pages에서 패널 열기
+content/instagram.js          Instagram 입력 및 원본 비율 처리
+content/site-upload.js        Facebook·고파스·에타·X·YouTube 입력
+shared/                       상태·보안 검증
+fixture/                      확장 진단 테스트
 ```
-
-Instagram의 화면 구조가 바뀌면 `content/instagram.js`의 `InstagramAdapter`만 조정합니다.
