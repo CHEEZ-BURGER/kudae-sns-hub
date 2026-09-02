@@ -70,10 +70,19 @@ export async function originalFiles(assets: DistributionAsset[]) {
 }
 
 export async function shareAssets(assets: DistributionAsset[], title: string, preparedFiles?: File[]) {
-  if (!navigator.share) throw new Error('이 기기에서는 여러 파일 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
   const files = preparedFiles ?? await originalFiles(assets);
-  if (!navigator.canShare?.({ files })) throw new Error('이 브라우저는 여러 파일 공유를 지원하지 않습니다. ZIP 다운로드를 이용해 주세요.');
-  await navigator.share({ title, files });
+  await shareFiles(files, title);
+}
+
+export async function shareFiles(files: File[], title: string) {
+  if (!navigator.share) throw new Error('이 기기에서는 파일 공유창을 지원하지 않습니다. 순차 복사나 원본 저장을 이용해 주세요.');
+  if (!navigator.canShare?.({ files })) throw new Error('이 브라우저는 선택한 원본 묶음을 공유할 수 없습니다. 순차 복사나 원본 저장을 이용해 주세요.');
+  try {
+    await navigator.share({ title, files });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('공유를 취소했습니다.');
+    throw error;
+  }
 }
 
 function triggerDownload(blob: Blob, filename: string) {
