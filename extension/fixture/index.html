@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>고대신문 SNS Helper 테스트</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#fffafb;color:#1d1d1d;font-family:Pretendard,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.wrap{width:min(880px,calc(100% - 32px));margin:40px auto}.panel{border:1px solid #f0dfe5;border-radius:18px;background:white;padding:24px;box-shadow:0 12px 36px rgba(29,29,29,.06)}h1{margin:0;font-size:26px}p{color:#6d6266;line-height:1.65}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0}.actions button{border:0;border-radius:10px;background:#ff205c;padding:11px 16px;color:white;font-weight:800;cursor:pointer}.actions button.secondary{border:1px solid #ff205c;background:white;color:#ff205c}input{display:block;margin:18px 0}.result{border-radius:12px;background:#fff2f6;padding:14px;font-weight:800}.files{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:16px}.file{overflow:hidden;border:1px solid #f0dfe5;border-radius:12px;background:white}.file img{display:block;width:100%;aspect-ratio:4/5;object-fit:cover}.file span{display:block;padding:8px;font-size:11px;font-weight:800}
+  </style>
+</head>
+<body>
+  <main class="wrap"><section class="panel"><p style="color:#ff205c;font-weight:900">내부 파이프라인 점검</p><h1>메모리 파일 자동 주입 테스트</h1><p>생성된 PNG를 디스크에 저장하지 않고 메모리 URL → 서비스 워커 fetch → File → DataTransfer → 아래 파일 입력 순서로 전달합니다.</p><div class="actions"><button data-count="1">PNG 1장 테스트</button><button data-count="10">PNG 10장 테스트</button><button class="secondary" id="clear">초기화</button></div><input id="target" type="file" accept="image/*" multiple><div class="result" id="result">아직 테스트하지 않았습니다.</div><div class="files" id="files"></div></section></main>
+  <script src="fixture.js"></script>
+</body>
+</html>

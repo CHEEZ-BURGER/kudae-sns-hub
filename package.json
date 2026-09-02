@@ -6,7 +6,8 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run extension:package",
+    "extension:package": "node scripts/package-extension.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",

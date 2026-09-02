@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, ArrowLeft, ArrowRight, Check, Clipboard, Copy, Download, ExternalLink, Film, Images, LoaderCircle, RefreshCw, RotateCcw } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Clipboard, Copy, Download, ExternalLink, Film, Images, Instagram, LoaderCircle, Plug, RefreshCw, RotateCcw, ShieldCheck, XCircle } from 'lucide-react';
 import type { Distribution, DistributionPost } from '../types';
 import { AppHeader } from './AppHeader';
 import { copyImageToClipboard, downloadAsset, downloadAssetsIndividually, isVideoAsset } from '../lib/image-tools';
 import { loadDistribution } from '../lib/public-api';
 import { categorizedTitle, koreapasTitle, postBodyWithTitle } from '../lib/post-copy';
 import { formatBytes } from '../lib/workflow';
+import { buildInstagramJob, desktopChromeMajor, isExtensionEvent, postExtensionMessage, type ExtensionUploadState } from '../lib/extension-bridge';
 
 export function DistributionPage({ token }: { token: string }) {
   const [data, setData] = useState<Distribution | null>(null);
@@ -57,10 +58,33 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
   const [working,setWorking]=useState('');
   const [pasteMode,setPasteMode]=useState(false);
   const [pasteIndex,setPasteIndex]=useState(0);
+  const [extensionStatus,setExtensionStatus]=useState<'checking'|'available'|'unavailable'|'unsupported'>('checking');
+  const [instagramUpload,setInstagramUpload]=useState<{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number}>({jobId:'',state:'QUEUED',message:'',current:0,total:0});
+  const activeJobId=useRef('');
   const totalSize=useMemo(()=>post.assets.reduce((sum,asset)=>sum+asset.sizeBytes,0),[post.assets]);
   const videoCount=post.assets.filter(isVideoAsset).length;
   const imageAssets=post.assets.filter((asset)=>!isVideoAsset(asset));
   const displayTitle=categorizedTitle(post.category,post.title);
+  const chromeMajor=useMemo(()=>desktopChromeMajor(navigator.userAgent),[]);
+
+  useEffect(()=>{
+    if(!chromeMajor||chromeMajor<148){setExtensionStatus('unsupported');return;}
+    let alive=true;
+    const onMessage=(event:MessageEvent)=>{
+      if(!alive||!isExtensionEvent(event))return;
+      const {type,payload}=event.data;
+      if(type==='SNS_EXTENSION_PONG'){setExtensionStatus('available');return;}
+      if(payload.jobId&&payload.jobId!==activeJobId.current)return;
+      if(type==='SNS_UPLOAD_ACK'){setInstagramUpload((current)=>({...current,state:'QUEUED',message:'확장 프로그램에 연결했습니다.'}));return;}
+      if(type==='SNS_UPLOAD_PROGRESS'){setInstagramUpload((current)=>({...current,state:payload.state||current.state,message:payload.userMessage||current.message,current:payload.current||0,total:payload.total||current.total}));return;}
+      if(type==='SNS_UPLOAD_COMPLETE'){setInstagramUpload((current)=>({...current,state:'COMPLETE',message:payload.userMessage||`이미지 ${payload.count||current.total}장 전달 완료`,current:current.total}));return;}
+      if(type==='SNS_UPLOAD_ERROR'){setInstagramUpload((current)=>({...current,state:payload.code==='USER_CANCELLED'?'CANCELLED':'ERROR',message:payload.userMessage||'Instagram 전달에 실패했습니다.'}));}
+    };
+    window.addEventListener('message',onMessage);
+    postExtensionMessage('SNS_EXTENSION_PING');
+    const timer=window.setTimeout(()=>setExtensionStatus((current)=>current==='checking'?'unavailable':current),1200);
+    return()=>{alive=false;window.clearTimeout(timer);window.removeEventListener('message',onMessage);};
+  },[chromeMajor]);
 
   async function action(key:string,task:()=>Promise<void>,success:string){setWorking(key);try{await task();notify(success);return true;}catch(error){notify(error instanceof Error?error.message:'작업에 실패했습니다.');return false;}finally{setWorking('');}}
   async function copyText(value:string,success:string){try{await navigator.clipboard.writeText(value);notify(success);}catch{notify('텍스트를 복사하지 못했습니다. 길게 눌러 직접 복사해 주세요.');}}
@@ -80,6 +104,18 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
     if(!imageAssets.length){notify('복사할 이미지가 없습니다.');return;}
     await copyForPaste(0);
   }
+  function startInstagram(){
+    try{
+      const job=buildInstagramJob(imageAssets);
+      activeJobId.current=job.jobId;
+      setInstagramUpload({jobId:job.jobId,state:'QUEUED',message:'확장 프로그램에 연결 중입니다.',current:0,total:job.assets.length});
+      postExtensionMessage('SNS_UPLOAD_REQUEST',job);
+    }catch(error){notify(error instanceof Error?error.message:'Instagram 전달 작업을 만들지 못했습니다.');}
+  }
+  function cancelInstagram(){
+    if(!activeJobId.current)return;
+    postExtensionMessage('SNS_UPLOAD_CANCEL',{jobId:activeJobId.current});
+  }
 
   return <article className="reporter-card">
     <header className="border-b border-line p-4 sm:p-6"><div className="flex gap-3"><span className="grid size-8 shrink-0 place-items-center rounded-lg bg-crimson text-xs font-black text-white">{index+1}</span><div className="min-w-0 flex-1"><h2 className="text-lg font-black leading-7 sm:text-xl">{displayTitle}</h2><p className="mt-1 text-xs text-muted">이미지 {imageAssets.length}장 · 영상 {videoCount}개 · 원본 {formatBytes(totalSize)}</p></div></div></header>
@@ -90,6 +126,8 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
         <div className="copy-preview"><span>복사될 제목</span><strong>{displayTitle}</strong><small>본문 복사 시 이 제목 뒤에 두 줄을 띄우고 본문·기사 링크·크레딧이 이어집니다.</small></div>
         <div className="copy-tool-buttons"><button className="button secondary" onClick={copyTitle}><Clipboard/>SNS 제목 복사</button><button className="button secondary" onClick={copyKoreapasTitle}><Clipboard/>고파스 제목 복사</button><button className="button primary" onClick={copyBody}><Clipboard/>제목+본문 복사</button></div>
       </section>
+
+      {imageAssets.length>0&&<InstagramTransfer status={extensionStatus} chromeMajor={chromeMajor} upload={instagramUpload} onStart={startInstagram} onCancel={cancelInstagram}/>}
 
       {imageAssets.length>0&&<div className="paste-transfer mt-4">
         {!pasteMode?<div className="paste-start"><Copy/><div><b>이미지 순차 복사</b><span>1번 이미지부터 복사하고 다음 순서를 기억합니다.</span></div><button className="button primary" onClick={startPaste} disabled={working.startsWith('paste-')}><Copy/>순차 복사 시작</button></div>
@@ -106,6 +144,20 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
       <section className="copy-block mt-5"><div className="flex items-center justify-between gap-2"><b className="section-label">게시 본문 미리보기</b><button className="button tiny secondary" onClick={copyBody}><Clipboard/>제목+본문 복사</button></div><strong className="body-copy-title">{displayTitle}</strong><p className="mt-3 whitespace-pre-wrap text-sm leading-7">{post.body}</p>{post.articleUrl&&<a className="article-link" href={post.articleUrl} target="_blank" rel="noreferrer"><ExternalLink/>기사 원문 열기</a>}{post.credits&&<p className="mt-4 whitespace-pre-wrap border-t border-line pt-4 text-xs leading-6 text-muted">{post.credits}</p>}</section>
     </div>
   </article>;
+}
+
+function InstagramTransfer({status,chromeMajor,upload,onStart,onCancel}:{status:'checking'|'available'|'unavailable'|'unsupported';chromeMajor:number|null;upload:{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number};onStart:()=>void;onCancel:()=>void}) {
+  const busy=Boolean(upload.jobId)&&!['COMPLETE','ERROR','CANCELLED'].includes(upload.state);
+  const progress=upload.total?Math.round((upload.current/upload.total)*100):upload.state==='OPENING_TARGET'?12:upload.state==='INJECTING'?80:upload.state==='VERIFYING'?92:8;
+  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip`;
+  if(status==='unsupported')return <section className="instagram-transfer mobile-fallback mt-4"><Instagram/><div><b>Instagram 자동 넣기는 PC Chrome 전용</b><span>{chromeMajor&&chromeMajor<148?`Chrome ${chromeMajor}에서는 사용할 수 없습니다. 148 이상으로 업데이트해 주세요.`:'모바일에서는 아래의 이미지 순차 복사나 원본 저장을 사용하세요.'}</span></div></section>;
+  return <section className={`instagram-transfer mt-4 ${upload.state.toLowerCase()}`} aria-label="Instagram 자동 이미지 전달">
+    <div className="instagram-transfer-head"><Instagram/><div><b>Instagram에 바로 넣기</b><span>다운로드 없이 원본 이미지를 Instagram Web 게시물 창에 전달합니다.</span></div>{status==='available'?<em><ShieldCheck/>확장 연결됨</em>:<em className="muted"><Plug/>{status==='checking'?'확인 중':'설치 필요'}</em>}</div>
+    {status==='available'?<div className="instagram-transfer-action">
+      {upload.jobId?<div className="extension-progress"><div><b>{upload.message||'Instagram 연결 중'}</b><span>{upload.state==='WAITING_FOR_COMPOSER'||upload.state==='WAITING_FOR_FILE_INPUT'?"Instagram에서 '만들기 → 게시물'을 열면 자동으로 계속됩니다.":upload.state==='COMPLETE'?'크롭과 본문을 확인하고 게시 버튼은 직접 눌러 주세요.':'이미지는 메모리에서만 처리되며 PC에 저장되지 않습니다.'}</span></div><div className="extension-progress-bar"><i style={{width:`${upload.state==='COMPLETE'?100:progress}%`}}/></div></div>:<p>PC Chrome 148 이상에서 사용할 수 있습니다. 기존 순차 복사 기능은 그대로 유지됩니다.</p>}
+      <div className="instagram-buttons">{busy?<button className="button ghost" onClick={onCancel}><XCircle/>취소</button>:<button className="button primary" onClick={onStart}><Instagram/>{upload.jobId?'다시 넣기':'Instagram에 바로 넣기'}</button>}</div>
+    </div>:status==='unavailable'?<div className="extension-install"><div><b>무료 Chrome 확장 프로그램이 필요합니다.</b><span>ZIP 압축 해제 → chrome://extensions → 개발자 모드 → 압축해제된 확장 프로그램 로드</span></div><a className="button primary" href={zipUrl} download><Download/>확장 다운로드</a></div>:<div className="extension-install"><LoaderCircle className="animate-spin"/><span>설치 여부를 확인하고 있습니다.</span></div>}
+  </section>;
 }
 
 function PostPager({current,total,onMove}:{current:number;total:number;onMove:(index:number)=>void}) {

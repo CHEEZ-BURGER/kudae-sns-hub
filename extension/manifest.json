@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "고대신문 SNS Upload Helper",
+  "description": "고대신문 SNS 배포실의 이미지를 디스크 저장 없이 Instagram 게시물 입력에 전달합니다.",
+  "version": "1.0.0",
+  "minimum_chrome_version": "148",
+  "message_serialization": "structured_clone",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://bcqqokdehkfaiuquktag.supabase.co/*"
+  ],
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+  "action": {
+    "default_title": "고대신문 SNS Upload Helper 테스트"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://cheez-burger.github.io/kudae-sns-hub/*",
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
+      "js": [
+        "shared/constants.js",
+        "shared/validators.js",
+        "content/app-bridge.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/*",
+        "https://instagram.com/*"
+      ],
+      "js": [
+        "shared/constants.js",
+        "shared/validators.js",
+        "content/sns-base.js",
+        "content/overlay.js",
+        "content/instagram.js"
+      ],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ]
+}

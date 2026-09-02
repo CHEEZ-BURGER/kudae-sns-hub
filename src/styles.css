@@ -135,6 +135,37 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .bulk-download b { font-size: .76rem; }
 .bulk-download span { margin-top: .18rem; color: #7c7470; font-size: .64rem; line-height: 1.45; }
 .body-copy-title { display: block; margin-top: .75rem; font-size: .86rem; line-height: 1.6; }
+.instagram-transfer { overflow: hidden; border: 1px solid #ead8df; border-radius: .9rem; background: linear-gradient(145deg,#fff 0%,#fff4f7 100%); }
+.instagram-transfer-head { display: flex; align-items: center; gap: .7rem; padding: .9rem; }
+.instagram-transfer-head > svg { width: 1.35rem; flex: 0 0 auto; color: #ff205c; }
+.instagram-transfer-head > div { min-width: 0; flex: 1; }
+.instagram-transfer-head b, .instagram-transfer-head span { display: block; }
+.instagram-transfer-head b { font-size: .8rem; }
+.instagram-transfer-head span { margin-top: .18rem; color: #786e72; font-size: .64rem; line-height: 1.5; }
+.instagram-transfer-head em { display: inline-flex; flex: 0 0 auto; align-items: center; gap: .3rem; border-radius: 999px; background: #e4f4eb; padding: .35rem .5rem; color: #24704c; font-size: .6rem; font-style: normal; font-weight: 900; }
+.instagram-transfer-head em.muted { background: #f2edef; color: #7d7176; }
+.instagram-transfer-head em svg { width: .8rem; }
+.instagram-transfer-action, .extension-install { display: flex; align-items: center; justify-content: space-between; gap: .8rem; border-top: 1px solid #f0dfe5; background: white; padding: .8rem .9rem; }
+.instagram-transfer-action > p, .extension-install span { margin: 0; color: #746b6f; font-size: .65rem; line-height: 1.55; }
+.extension-install > div { min-width: 0; }
+.extension-install b, .extension-install span { display: block; }
+.extension-install b { font-size: .72rem; }
+.extension-install span { margin-top: .18rem; }
+.extension-install > svg { width: 1rem; color: #ff205c; }
+.extension-progress { min-width: 0; flex: 1; }
+.extension-progress b, .extension-progress span { display: block; }
+.extension-progress b { font-size: .72rem; }
+.extension-progress span { margin-top: .2rem; color: #746b6f; font-size: .63rem; line-height: 1.5; }
+.extension-progress-bar { height: .35rem; overflow: hidden; margin-top: .55rem; border-radius: 999px; background: #f2e6ea; }
+.extension-progress-bar i { display: block; height: 100%; border-radius: inherit; background: #ff205c; transition: width .2s ease; }
+.instagram-transfer.complete .extension-progress-bar i { background: #218058; }
+.instagram-transfer.error .extension-progress-bar i { background: #a92b2b; }
+.instagram-buttons { flex: 0 0 auto; }
+.mobile-fallback { display: flex; align-items: center; gap: .7rem; padding: .85rem .9rem; background: white; }
+.mobile-fallback > svg { width: 1.2rem; color: #ff205c; }
+.mobile-fallback b, .mobile-fallback span { display: block; }
+.mobile-fallback b { font-size: .75rem; }
+.mobile-fallback span { margin-top: .18rem; color: #786f72; font-size: .64rem; line-height: 1.5; }
 .post-pager { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); align-items: center; gap: .7rem; margin-top: 1rem; }
 .post-pager > button:first-child { justify-self: start; }
 .post-pager > button:last-child { justify-self: end; }
@@ -186,6 +217,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .copy-tool-buttons .button.primary { grid-column: 1 / -1; min-height: 3rem; }
   .bulk-download { align-items: stretch; flex-direction: column; }
   .bulk-download .button { width: 100%; min-height: 3rem; }
+  .instagram-transfer-head { align-items: flex-start; }
+  .instagram-transfer-head em { display: none; }
+  .instagram-transfer-action, .extension-install { align-items: stretch; flex-direction: column; }
+  .instagram-buttons, .instagram-buttons .button, .extension-install .button { width: 100%; }
+  .instagram-buttons .button, .extension-install .button { min-height: 3rem; }
   .post-pager .button { min-height: 3rem; padding-inline: .75rem; }
   .share-box { grid-template-columns: auto minmax(0,1fr); }
   .share-box button { grid-column: 1 / -1; }
