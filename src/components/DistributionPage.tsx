@@ -151,7 +151,7 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
 function InstagramTransfer({status,chromeMajor,upload,onStart,onCancel}:{status:'checking'|'available'|'unavailable'|'unsupported';chromeMajor:number|null;upload:{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number};onStart:()=>void;onCancel:()=>void}) {
   const busy=Boolean(upload.jobId)&&!['COMPLETE','ERROR','CANCELLED'].includes(upload.state);
   const progress=upload.total?Math.round((upload.current/upload.total)*100):upload.state==='OPENING_TARGET'?12:upload.state==='INJECTING'?80:upload.state==='VERIFYING'?92:8;
-  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.0.0`;
+  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.1.0`;
   if(status==='unsupported')return <section className="instagram-transfer mobile-fallback mt-4"><Instagram/><div><b>Instagram 자동 넣기는 PC Chrome 전용</b><span>{chromeMajor&&chromeMajor<148?`Chrome ${chromeMajor}에서는 사용할 수 없습니다. 148 이상으로 업데이트해 주세요.`:'모바일에서는 아래의 이미지 순차 복사나 원본 저장을 사용하세요.'}</span></div></section>;
   return <section className={`instagram-transfer mt-4 ${upload.state.toLowerCase()}`} aria-label="Instagram 자동 이미지 전달">
     <div className="instagram-transfer-head"><Instagram/><div><b>Instagram에 바로 넣기</b><span>다운로드 없이 원본 이미지를 Instagram Web 게시물 창에 전달합니다.</span></div>{status==='available'?<em><ShieldCheck/>확장 연결됨</em>:<em className="muted"><Plug/>{status==='checking'?'확인 중':'설치 필요'}</em>}</div>

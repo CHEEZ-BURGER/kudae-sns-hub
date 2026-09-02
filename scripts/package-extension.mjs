@@ -23,5 +23,6 @@ async function addDirectory(directory) {
 }
 
 await addDirectory(source);
+zip.file('branding/ku-weekly-mark.png', await readFile(join(process.cwd(), 'public', 'branding', 'ku-weekly-mark.png')));
 await writeFile(output, await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 9 } }));
 console.log(`Packaged Chrome extension: ${relative(process.cwd(), output)}`);

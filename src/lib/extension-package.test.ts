@@ -8,6 +8,9 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
+    expect(manifest.version).toBe('2.1.0');
+    expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
+    expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
     expect(manifest.side_panel.default_path).toBe('sidepanel/index.html');
     expect(manifest.host_permissions).toContain('https://bcqqokdehkfaiuquktag.supabase.co/*');
@@ -19,6 +22,15 @@ describe('Chrome extension package contract', () => {
     expect(JSON.stringify(manifest)).not.toMatch(/<all_urls>|downloads|cookies|history|webRequest/);
     const appScripts = manifest.content_scripts.find((entry: { matches: string[] }) => entry.matches.some((match: string) => match.includes('kudae-sns-hub'))).js;
     expect(appScripts).toEqual(['shared/constants.js', 'shared/validators.js', 'shared/protocol.js', 'content/app-bridge.js']);
+  });
+
+  it('packages the KU Weekly mark as the extension and side-panel identity', () => {
+    const packager = read('scripts/package-extension.mjs');
+    const panel = read('extension/sidepanel/index.html');
+    expect(packager).toContain("zip.file('branding/ku-weekly-mark.png'");
+    expect(packager).toContain("'public', 'branding', 'ku-weekly-mark.png'");
+    expect(panel).toContain('/branding/ku-weekly-mark.png');
+    expect(panel).not.toContain('<div class="mark">KU</div>');
   });
 
   it('loads a pasted distribution link in session-only panel state', () => {
