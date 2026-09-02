@@ -22,6 +22,8 @@ describe('Chrome extension package contract', () => {
     expect(instagram).toContain("new Event('input', { bubbles: true, composed: true })");
     expect(instagram).toContain("new Event('change', { bubbles: true, composed: true })");
     expect(instagram).toContain('new MutationObserver');
+    expect(instagram).toContain('selectOriginalAspectRatio');
+    expect(instagram).toMatch(/원본\|original/);
     expect(instagram).not.toMatch(/__reactFiber\$|__reactProps\$/);
   });
 

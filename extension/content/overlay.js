@@ -22,10 +22,10 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
       this.detail.textContent = detail;
       this.bar.style.width = total ? `${Math.round((current / total) * 100)}%` : '18%';
     }
-    complete(message) {
+    complete(message, detail = '크롭과 본문을 확인한 뒤 게시 버튼은 직접 눌러 주세요.') {
       this.box.classList.add('done');
       this.state.textContent = message;
-      this.detail.textContent = '크롭과 본문을 확인한 뒤 게시 버튼은 직접 눌러 주세요.';
+      this.detail.textContent = detail;
       this.bar.style.width = '100%';
       this.root.querySelector('.cancel').textContent = '닫기';
     }

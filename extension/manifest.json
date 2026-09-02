@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "고대신문 SNS Upload Helper",
   "description": "고대신문 SNS 배포실의 이미지를 디스크 저장 없이 Instagram 게시물 입력에 전달합니다.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "minimum_chrome_version": "148",
   "message_serialization": "structured_clone",
   "permissions": ["storage"],

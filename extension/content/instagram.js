@@ -101,6 +101,49 @@
         this.signal.addEventListener('abort', onAbort, { once: true });
       });
     }
+
+    accessibleLabel(element) {
+      const descendant = element.querySelector('[aria-label],img[alt]');
+      return [
+        element.getAttribute('aria-label'),
+        element.getAttribute('title'),
+        descendant?.getAttribute('aria-label'),
+        descendant?.getAttribute('alt'),
+        element.textContent,
+      ].filter(Boolean).join(' ').trim().replace(/\s+/g, ' ');
+    }
+
+    findAspectRatioButton() {
+      const root = this.dialog() || document;
+      const pattern = /(?:select\s*crop|crop|aspect\s*ratio|자르기|비율|사진\s*맞춤)/i;
+      return [...root.querySelectorAll('button,[role="button"]')]
+        .map((element, index) => ({ element, index, label: this.accessibleLabel(element) }))
+        .filter((candidate) => pattern.test(candidate.label) && !/^(?:원본|original)$/i.test(candidate.label))
+        .sort((left, right) => Number(right.element.closest('[role="dialog"]') !== null) - Number(left.element.closest('[role="dialog"]') !== null) || right.index - left.index)[0]?.element || null;
+    }
+
+    findOriginalOption() {
+      const root = this.dialog() || document;
+      return [...root.querySelectorAll('button,[role="button"],[role="menuitem"],[role="option"]')]
+        .find((element) => /^(?:원본|original)$/i.test(this.accessibleLabel(element))) || null;
+    }
+
+    async selectOriginalAspectRatio() {
+      let ratioButton = this.findAspectRatioButton();
+      if (!ratioButton) {
+        try { ratioButton = await api.waitForMutation(() => this.findAspectRatioButton(), 8_000, this.signal); }
+        catch { return false; }
+      }
+      ratioButton.click();
+      let original = this.findOriginalOption();
+      if (!original) {
+        try { original = await api.waitForMutation(() => this.findOriginalOption(), 4_000, this.signal); }
+        catch { return false; }
+      }
+      original.click();
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      return true;
+    }
   }
 
   let port;
@@ -144,10 +187,14 @@
       targetProgress(api.STATES.VERIFYING, 'Instagram이 이미지를 받았는지 확인 중입니다.');
       const reacted = await adapter.verifyInjection(input, files.length);
       if (!reacted) throw api.extensionError('COMPOSER_DID_NOT_REACT', '이미지는 전달했지만 Instagram 화면이 반응하지 않았습니다.', 'FileList assigned but composer did not react');
+      targetProgress(api.STATES.VERIFYING, 'Instagram의 이미지 비율을 원본으로 맞추는 중입니다.');
+      const originalRatioSelected = await adapter.selectOriginalAspectRatio();
       const count = files.length;
       finished = true;
-      overlay.complete(`이미지 ${count}장 전달 완료`);
-      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count });
+      const completionMessage = originalRatioSelected ? `원본 비율로 이미지 ${count}장 전달 완료` : `원본 이미지 ${count}장 전달 완료 · 비율 확인 필요`;
+      const completionDetail = originalRatioSelected ? '원본 비율을 적용했습니다. 본문을 확인한 뒤 게시 버튼은 직접 눌러 주세요.' : "Instagram 왼쪽 아래의 비율 버튼을 누르고 '원본'을 선택해 주세요.";
+      overlay.complete(completionMessage, completionDetail);
+      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count, originalRatioSelected, userMessage: completionMessage });
       clearMemory();
     } catch (error) {
       if (error?.code === 'USER_CANCELLED') return;

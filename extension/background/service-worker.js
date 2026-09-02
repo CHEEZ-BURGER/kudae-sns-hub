@@ -228,7 +228,7 @@ chrome.runtime.onConnect.addListener((port) => {
       return;
     }
     if (message.type === 'TARGET_COMPLETE') {
-      await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, userMessage: `이미지 ${message.count}장 전달 완료` }));
+      await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, originalRatioSelected: Boolean(message.originalRatioSelected), userMessage: message.userMessage || `이미지 ${message.count}장 전달 완료` }));
       await deleteJob(job.jobId);
       return;
     }

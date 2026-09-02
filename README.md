@@ -153,7 +153,7 @@ git push -u origin main
 3. `압축해제된 확장 프로그램을 로드합니다`를 누르고 `manifest.json`이 있는 폴더 선택
 4. 고대신문 배포실 페이지 새로고침
 
-확장은 해당 Supabase 호스트·배포실·Instagram에만 접근하며 `downloads`, 쿠키, 방문 기록, `<all_urls>` 권한을 요청하지 않습니다. 원본은 2~3개씩 Supabase 서명 URL에서 가져와 RAM의 `File`로만 만들고, Chrome 148의 structured clone 메시징으로 Instagram content script에 전달합니다. 작업 메타데이터는 `storage.session`에서 10분 후 폐기되며 최종 게시 버튼은 누르지 않습니다. 자세한 설치·보안 설명은 `extension/README.md`에 있습니다.
+확장은 해당 Supabase 호스트·배포실·Instagram에만 접근하며 `downloads`, 쿠키, 방문 기록, `<all_urls>` 권한을 요청하지 않습니다. 원본은 2~3개씩 Supabase 서명 URL에서 가져와 RAM의 `File`로만 만들고, Chrome 148의 structured clone 메시징으로 Instagram content script에 전달합니다. 업로드 뒤 Instagram의 비율 메뉴에서 `원본`도 자동 선택하며, UI 차이로 찾지 못하면 수동 확인 문구를 표시합니다. 작업 메타데이터는 `storage.session`에서 10분 후 폐기되며 최종 게시 버튼은 누르지 않습니다. 자세한 설치·보안 설명은 `extension/README.md`에 있습니다.
 
 ## HWP 및 브라우저 제약
 
