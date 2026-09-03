@@ -7,6 +7,9 @@ import { AdminUsersPanel } from './AdminUsersPanel';
 import { expandFiles, extractManuscript, filesFromDataTransfer, partitionSupportedFiles } from '../lib/document-parser';
 import { buildDraftPosts, confidenceLabel, formatBytes, groupMedia, isVideoFile, splitManuscript } from '../lib/workflow';
 import { deletePublication, listAdminPublications, loadAdminPublication, publishDistribution } from '../lib/publish';
+import { distributionShareUrl, previewForTitle, titleFromManuscript } from '../../shared/share-preview.mjs';
+
+const shareLink = (token: string, title: string) => distributionShareUrl(new URL(import.meta.env.BASE_URL, location.origin).href, token, title);
 
 type AdminStudioProps = { session: Session | null; demoMode?: boolean };
 type Stage = 'upload' | 'edit' | 'publishing' | 'done';
@@ -82,7 +85,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       setPendingMedia(editable.posts.flatMap((post) => post.assets.map((asset) => asset.file)));
       setPasteText(''); setWarnings([]); setShowPaste(false);
       setEditingPublicationId(editable.id);
-      setShareUrl(`${location.origin}${location.pathname}#/d/${editable.shareToken}`);
+      setShareUrl(shareLink(editable.shareToken, editable.title));
       setStage('edit');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : '배포 내용을 불러오지 못했습니다.');
@@ -102,7 +105,6 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       const expanded = await expandFiles(files);
       const partitioned = partitionSupportedFiles(expanded.files);
       const issue = expanded.files.map((file) => file.name.match(/\d+호/u)?.[0]).find(Boolean);
-      if (issue) { setIssueNumber(issue); setPublicationTitle(`${issue} 카드뉴스`); }
       setPendingMedia(partitioned.media);
       const nextWarnings = [...expanded.warnings];
       if (partitioned.unsupported.length) nextWarnings.push(`지원하지 않는 파일 ${partitioned.unsupported.length}개는 제외했습니다.`);
@@ -119,13 +121,20 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
         nextWarnings.push('원고 파일이 없습니다. 본문을 붙여넣을 수 있습니다.');
         setShowPaste(true);
       }
+      const detectedTitle = titleFromManuscript(partitioned.manuscripts[0]?.name, text, issue);
+      if (detectedTitle) {
+        setPublicationTitle(detectedTitle);
+        setIssueNumber(detectedTitle.match(/\d+호/u)?.[0] || issue || issueNumber);
+      }
       setWarnings(nextWarnings);
-      if (partitioned.media.length && text.trim()) analyse(partitioned.media, text);
+      if (partitioned.media.length && text.trim()) analyse(partitioned.media, text, false);
     } catch (error) { setMessage(error instanceof Error ? error.message : '파일 처리 중 오류가 발생했습니다.'); }
     finally { setBusy(false); }
   }
 
-  function analyse(media = pendingMedia, text = pasteText) {
+  function analyse(media = pendingMedia, text = pasteText, detectTitle = true) {
+    const pastedTitle = titleFromManuscript('', text);
+    if (detectTitle && pastedTitle) { setPublicationTitle(pastedTitle); setIssueNumber(pastedTitle.match(/\d+호/u)![0]); }
     const nextSections = splitManuscript(text);
     if (!media.length) { setMessage('이미지 또는 영상을 먼저 추가해 주세요.'); return; }
     if (!nextSections.length) { setMessage('`[보도] 제목` 같은 원고 섹션 헤더를 찾지 못했습니다. 원고를 확인해 주세요.'); setShowPaste(true); return; }
@@ -185,7 +194,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
     try {
       const result = await publishDistribution({ issueNumber, title: publicationTitle, posts, existingPublicationId: editingPublicationId || undefined }, (label, value) => setProgress({ label, value }));
       if (!result.token) throw new Error('공유 토큰 생성에 실패했습니다.');
-      setShareUrl(`${location.origin}${location.pathname}#/d/${result.token}`);
+      setShareUrl(shareLink(result.token, publicationTitle));
       setStage('done');
     } catch (error) { setMessage(error instanceof Error ? error.message : '배포에 실패했습니다.'); setStage('edit'); }
   }
@@ -271,7 +280,7 @@ type EditProps = {
 
 function EditStage(props: EditProps) {
   return <>
-    <section className="panel mb-5 grid gap-4 p-5 sm:grid-cols-[180px_1fr]"><label className="field"><span>호수</span><input value={props.issueNumber} onChange={(e)=>props.setIssueNumber(e.target.value)}/></label><label className="field"><span>배포 제목</span><input value={props.publicationTitle} onChange={(e)=>props.setPublicationTitle(e.target.value)}/></label></section>
+    <section className="panel mb-5 grid gap-4 p-5 sm:grid-cols-[180px_1fr]"><label className="field"><span>호수</span><input value={props.issueNumber} onChange={(e)=>props.setIssueNumber(e.target.value)}/></label><label className="field"><span>배포 제목</span><input value={props.publicationTitle} onChange={(e)=>props.setPublicationTitle(e.target.value)} placeholder="2045호 카드뉴스 (木)"/><small className="text-muted">{previewForTitle(props.publicationTitle) ? `카톡 미리보기: ${previewForTitle(props.publicationTitle)!.title}` : '카톡 호수별 미리보기는 2000~2499호의 ‘2045호 카드뉴스 (木)’ 형식을 지원합니다. 다른 제목은 기본 사이트 이름으로 표시됩니다.'}</small></label></section>
     <div className="space-y-5">{props.posts.map((post,index)=><article className="panel overflow-hidden" key={post.id}>
       <header className="flex items-center justify-between gap-4 border-b border-line bg-white px-4 py-3 sm:px-5"><div className="flex min-w-0 items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-lg bg-crimson text-xs font-black text-white">{index+1}</span><div className="min-w-0"><b className="block truncate text-sm">{post.groupName}</b><span className={`confidence ${post.confidence>=.7?'high':post.confidence>=.4?'medium':'low'}`}>매칭 {confidenceLabel(post.confidence)} · {Math.round(post.confidence*100)}%</span></div></div><button className="icon-button danger" title="게시물 삭제" onClick={()=>props.setPosts((current)=>current.filter((item)=>item.id!==post.id))}><Trash2/></button></header>
       <div className="grid gap-6 p-4 sm:p-5 xl:grid-cols-[minmax(280px,.8fr)_minmax(380px,1.2fr)]">
@@ -291,17 +300,17 @@ function PublishingStage({ progress }: { progress: {label:string;value:number} }
 function DoneStage({ shareUrl, reset, editing }: { shareUrl:string; reset:()=>void; editing:boolean }) {
   const [copied,setCopied]=useState(false);
   async function copy(){await navigator.clipboard.writeText(shareUrl);setCopied(true);setTimeout(()=>setCopied(false),1600);}
-  return <section className="panel mx-auto max-w-2xl p-7 text-center sm:p-10"><span className="success-icon"><Check/></span><p className="eyebrow mt-5">{editing?'수정 완료':'배포 완료'}</p><h2 className="mt-2 text-2xl font-black">{editing?'기존 배포 링크에 수정 내용이 반영됐습니다.':'기자들에게 이 링크를 보내세요.'}</h2><p className="mt-2 text-sm text-muted">{editing?'기자에게 링크를 다시 보낼 필요 없이 같은 주소를 계속 사용합니다.':'링크를 받은 사람은 로그인 없이 이 배포만 읽을 수 있습니다.'}</p><div className="share-box mt-7"><Link2/><input readOnly value={shareUrl}/><button onClick={copy}>{copied?'복사됨':'링크 복사'}</button></div><div className="mt-6 flex flex-wrap justify-center gap-2"><a className="button secondary" href={`#/d/${shareUrl.split('/#/d/')[1]}`}>기자 화면 열기</a><button className="button ghost" onClick={reset}>배포 목록으로</button></div></section>;
+  return <section className="panel mx-auto max-w-2xl p-7 text-center sm:p-10"><span className="success-icon"><Check/></span><p className="eyebrow mt-5">{editing?'수정 완료':'배포 완료'}</p><h2 className="mt-2 text-2xl font-black">{editing?'기존 배포 링크에 수정 내용이 반영됐습니다.':'기자들에게 이 링크를 보내세요.'}</h2><p className="mt-2 text-sm text-muted">{editing?'기존 링크도 계속 열립니다. 변경된 카톡 미리보기 제목은 아래 링크를 새로 복사해 보내세요.':'링크를 받은 사람은 로그인 없이 이 배포만 읽을 수 있습니다.'}</p><div className="share-box mt-7"><Link2/><input readOnly value={shareUrl}/><button onClick={copy}>{copied?'복사됨':'링크 복사'}</button></div><div className="mt-6 flex flex-wrap justify-center gap-2"><a className="button secondary" href={shareUrl}>기자 화면 열기</a><button className="button ghost" onClick={reset}>배포 목록으로</button></div></section>;
 }
 
 function RecentPublications({ data, onDelete, onEdit, loadingEditId }: { data:Array<Record<string,string|null>>; onDelete:(id:string)=>Promise<void>; onEdit:(id:string)=>Promise<void>; loadingEditId:string }) {
   const [deleting, setDeleting] = useState('');
-  async function copy(token:string){await navigator.clipboard.writeText(`${location.origin}${location.pathname}#/d/${token}`);}
+  async function copy(token:string,title:string){await navigator.clipboard.writeText(shareLink(token,title));}
   async function remove(id:string,title:string){
     if(!window.confirm(`“${title}” 배포와 원본 파일을 삭제할까요?`)) return;
     setDeleting(id);
     await onDelete(id);
     setDeleting('');
   }
-  return <section className="mt-10"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-black">최근 배포</h2><p className="mt-1 text-xs text-muted">최신 3개만 보관하며 새 배포가 추가되면 가장 오래된 자료를 자동 삭제합니다.</p></div><span className="text-xs text-muted">{data.length}건</span></div><div className="panel divide-y divide-line overflow-hidden">{data.slice(0,3).map((item)=><div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={item.id}><div className="min-w-0"><b className="block truncate text-sm">{item.title}</b><span className="text-xs text-muted">{item.issue_number} · {item.published_at ? new Date(item.published_at).toLocaleString('ko-KR') : '작성 중'}</span></div><div className="flex shrink-0 flex-wrap gap-2"><button className="button tiny secondary" disabled={Boolean(loadingEditId)||deleting===item.id} onClick={()=>onEdit(item.id!)}>{loadingEditId===item.id?<LoaderCircle className="animate-spin"/>:<Pencil/>}{loadingEditId===item.id?'불러오는 중':'수정'}</button>{item.share_token&&<button className="button tiny ghost" onClick={()=>copy(item.share_token!)}><Clipboard/>링크 복사</button>}<button className="button tiny danger" disabled={deleting===item.id||Boolean(loadingEditId)} onClick={()=>remove(item.id!,item.title??'배포')}><Trash2/>{deleting===item.id?'삭제 중':'삭제'}</button></div></div>)}</div></section>;
+  return <section className="mt-10"><div className="mb-3 flex items-center justify-between"><div><h2 className="text-sm font-black">최근 배포</h2><p className="mt-1 text-xs text-muted">최신 3개만 보관하며 새 배포가 추가되면 가장 오래된 자료를 자동 삭제합니다.</p></div><span className="text-xs text-muted">{data.length}건</span></div><div className="panel divide-y divide-line overflow-hidden">{data.slice(0,3).map((item)=><div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={item.id}><div className="min-w-0"><b className="block truncate text-sm">{item.title}</b><span className="text-xs text-muted">{item.issue_number} · {item.published_at ? new Date(item.published_at).toLocaleString('ko-KR') : '작성 중'}</span></div><div className="flex shrink-0 flex-wrap gap-2"><button className="button tiny secondary" disabled={Boolean(loadingEditId)||deleting===item.id} onClick={()=>onEdit(item.id!)}>{loadingEditId===item.id?<LoaderCircle className="animate-spin"/>:<Pencil/>}{loadingEditId===item.id?'불러오는 중':'수정'}</button>{item.share_token&&<button className="button tiny ghost" onClick={()=>copy(item.share_token!,item.title||'')}><Clipboard/>링크 복사</button>}<button className="button tiny danger" disabled={deleting===item.id||Boolean(loadingEditId)} onClick={()=>remove(item.id!,item.title??'배포')}><Trash2/>{deleting===item.id?'삭제 중':'삭제'}</button></div></div>)}</div></section>;
 }

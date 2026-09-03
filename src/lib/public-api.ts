@@ -30,7 +30,7 @@ function demoDistribution(): Distribution {
   return {
     id: 'demo-publication', issueNumber: '2046호', title: '2046호 SNS 카드뉴스', publishedAt: new Date().toISOString(), expiresAt: null,
     posts: [
-      { id: 'demo-post-1', position: 0, category: '보도', title: "'탄소중립' 반환점 돌았지만 ··· 총배출량 감축은 과제", body: '고려대 서울캠퍼스는 탄소중립 계획을 수립하고 온실가스 감축을 추진하고 있다. 목표 달성을 위해선 감축 노력을 다각화해야 한다는 지적이 나온다.', articleUrl: 'https://www.kunews.ac.kr/news/articleView.html?idxno=51212', credits: '글 | 유지원·원예지·전정현 기자\n인포그래픽 | 이지효 기자\n카드뉴스 | 송민경 미디어부장', assets: [asset('a1','지속가능',1,'#1d1d1d'),asset('a2','지속가능',2,'#ff205c'),asset('a3','지속가능',3,'#623446')] },
+      { id: 'demo-post-1', position: 0, category: '보도', title: "'탄소중립' 반환점 돌았지만 ··· 총배출량 감축은 과제", body: '고려대 서울캠퍼스는 탄소중립 계획을 수립하고 온실가스 감축을 추진하고 있다. 목표 달성을 위해선 감축 노력을 다각화해야 한다는 지적이 나온다.\n\n기사 전문은 고대신문 홈페이지나 고대신문 2046호에서 읽으실 수 있습니다.\n\n글 | 유지원·원예지·전정현 기자\n인포그래픽 | 이지효 기자\n카드뉴스 | 송민경 미디어부장', articleUrl: 'https://www.kunews.ac.kr/news/articleView.html?idxno=51212', credits: '', assets: [asset('a1','지속가능',1,'#1d1d1d'),asset('a2','지속가능',2,'#ff205c'),asset('a3','지속가능',3,'#623446')] },
       { id: 'demo-post-2', position: 1, category: '사설', title: '재조명 내세우는 뉴라이트 끊어내야', body: '역사를 왜곡하는 뉴라이트식 재조명은 중단돼야 한다.', articleUrl: '', credits: '사설 | 고대신문 편집국', assets: [asset('b1','뉴라이트 사설',1,'#ff205c'),asset('b2','뉴라이트 사설',2,'#ff8bad')] },
     ],
   };

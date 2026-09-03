@@ -1,3 +1,5 @@
+import { postBody } from '../shared/post-content.mjs';
+
 (() => {
   const api = globalThis.KudaeSNS;
   const config = globalThis.KudaeSNSConfig || {};
@@ -27,7 +29,7 @@
   }
   function categorizedTitle(post) { const p = titleParts(post.category, post.title); return `[${p.category}] ${p.title}`.trim(); }
   function koreapasTitle(post) { const p = titleParts(post.category, post.title); return `[${p.category.startsWith('고대신문 ') ? p.category : `고대신문 ${p.category}`}] ${p.title}`.trim(); }
-  function bodyWithTitle(post) { return [categorizedTitle(post), post.body, post.articleUrl, post.credits].filter((value) => value?.trim()).join('\n\n'); }
+  function bodyWithTitle(post) { return [categorizedTitle(post), postBody(post)].filter(Boolean).join('\n\n'); }
   function images(post) { return post.assets.filter((asset) => asset.mimeType.startsWith('image/')); }
   function videos(post) { return post.assets.filter((asset) => asset.mimeType.startsWith('video/')); }
 

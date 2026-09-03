@@ -1,4 +1,5 @@
 import type { DraftPost, SourceSection } from '../types';
+import { extractArticleUrl, postContentParts } from '../../extension/shared/post-content.mjs';
 
 const imageExtensions = /\.(?:jpe?g|png|webp|gif|avif|heic|svg)$/i;
 const videoExtensions = /\.(?:mp4|mov|m4v|webm)$/i;
@@ -7,8 +8,6 @@ const manuscriptExtensions = /\.(?:hwp|hwpx|txt|docx)$/i;
 // Requiring that boundary prevents newsletter teaser lines such as
 // "[사설] ..." from being mistaken for a second full article section.
 const headerPattern = /(?:^|\n{2,})(?:\*\*)?[ \t]*(?:📩[ \t]*)?\[([^\]\r\n]{1,40})\][ \t]*([^\r\n]*?)(?:\*\*)?[ \t]*(?=\n|$)/gu;
-const creditPattern = /^(?:글|사진|취재|인포그래픽|카드뉴스|디자인|일러스트|영상|편집)\s*[|｜:].*$/gmu;
-const urlPattern = /https?:\/\/[^\s)\]]+/i;
 const naturalCollator = new Intl.Collator('ko-KR', { numeric: true, sensitivity: 'base' });
 
 export function isImageFile(name: string) {
@@ -82,14 +81,12 @@ export function splitManuscript(input: string): SourceSection[] {
     const raw = text.slice(match.start, end).trim().replace(/^\*\*|\*\*$/g, '');
     const category = match.category;
     const title = match.title || `[${category}]`;
-    const articleUrl = raw.match(urlPattern)?.[0] ?? '';
-    const credits = [...raw.matchAll(creditPattern)].map((item) => item[0].trim()).join('\n');
-    const headerLine = match.headerLine;
-    const body = raw
-      .replace(headerLine, '')
-      .replace(articleUrl, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    const content = text.slice(match.start, end).trim().slice(match.headerLine.length).trim();
+    const articleUrl = extractArticleUrl(content);
+    const parts = postContentParts({ body: content, articleUrl });
+    const credits = parts.credits;
+    // Keep credits editable as body text; every copy/preview places the URL before them.
+    const body = [parts.body, credits].filter(Boolean).join('\n\n');
 
     return {
       id: `section-${index + 1}`,

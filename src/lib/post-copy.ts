@@ -1,4 +1,6 @@
 import type { DistributionPost } from '../types';
+import { postBody } from '../../extension/shared/post-content.mjs';
+export { postContentParts } from '../../extension/shared/post-content.mjs';
 
 function titleParts(category: string | undefined, title: string) {
   const match = title.trim().match(/^\[([^\]]+)\]\s*(.*)$/u);
@@ -20,7 +22,7 @@ export function koreapasTitle(category: string | undefined, title: string) {
 }
 
 export function postBodyWithTitle(post: Pick<DistributionPost, 'category' | 'title' | 'body' | 'articleUrl' | 'credits'>) {
-  return [categorizedTitle(post.category, post.title), post.body, post.articleUrl, post.credits]
+  return [categorizedTitle(post.category, post.title), postBody(post)]
     .filter((value) => value.trim())
     .join('\n\n');
 }

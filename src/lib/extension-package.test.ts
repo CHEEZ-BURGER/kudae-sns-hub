@@ -8,7 +8,7 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.1.0');
+    expect(manifest.version).toBe('2.1.1');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
@@ -40,6 +40,8 @@ describe('Chrome extension package contract', () => {
     expect(panel).toContain("type: 'PANEL_UPLOAD_REQUEST'");
     expect(panel).toContain('navigator.clipboard.write');
     expect(panel).not.toContain('chrome.storage.local');
+    expect(panel).toContain("import { postBody } from '../shared/post-content.mjs'");
+    expect(read('extension/sidepanel/index.html')).toContain('<script type="module" src="sidepanel.js">');
   });
 
   it('injects FileList on supported non-Instagram sites without private framework hooks', () => {

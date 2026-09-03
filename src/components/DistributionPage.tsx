@@ -4,7 +4,7 @@ import type { Distribution, DistributionPost } from '../types';
 import { AppHeader } from './AppHeader';
 import { copyImageToClipboard, downloadAsset, downloadAssetsIndividually, isVideoAsset } from '../lib/image-tools';
 import { loadDistribution } from '../lib/public-api';
-import { categorizedTitle, koreapasTitle, postBodyWithTitle } from '../lib/post-copy';
+import { categorizedTitle, koreapasTitle, postBodyWithTitle, postContentParts } from '../lib/post-copy';
 import { formatBytes } from '../lib/workflow';
 import { buildInstagramJob, desktopChromeMajor, isExtensionEvent, postExtensionMessage, type ExtensionUploadState } from '../lib/extension-bridge';
 
@@ -65,6 +65,7 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
   const videoCount=post.assets.filter(isVideoAsset).length;
   const imageAssets=post.assets.filter((asset)=>!isVideoAsset(asset));
   const displayTitle=categorizedTitle(post.category,post.title);
+  const content=postContentParts(post);
   const chromeMajor=useMemo(()=>desktopChromeMajor(navigator.userAgent),[]);
 
   useEffect(()=>{
@@ -143,7 +144,7 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
 
       {imageAssets.length>0&&<section className="bulk-download mt-4"><div><Download/><p><b>이미지 원본 전체 다운로드</b><span>ZIP으로 묶지 않고 {imageAssets.length}개 원본을 순서대로 내려받습니다.</span></p></div><button className="button primary" disabled={working==='download-images'} onClick={()=>action('download-images',()=>downloadAssetsIndividually(imageAssets),`${imageAssets.length}개 원본 다운로드를 시작했습니다.`)}>{working==='download-images'?<LoaderCircle className="animate-spin"/>:<Download/>}전체 다운로드</button></section>}
 
-      <section className="copy-block mt-5"><div className="flex items-center justify-between gap-2"><b className="section-label">게시 본문 미리보기</b><button className="button tiny secondary" onClick={copyBody}><Clipboard/>제목+본문 복사</button></div><strong className="body-copy-title">{displayTitle}</strong><p className="mt-3 whitespace-pre-wrap text-sm leading-7">{post.body}</p>{post.articleUrl&&<a className="article-link" href={post.articleUrl} target="_blank" rel="noreferrer"><ExternalLink/>기사 원문 열기</a>}{post.credits&&<p className="mt-4 whitespace-pre-wrap border-t border-line pt-4 text-xs leading-6 text-muted">{post.credits}</p>}</section>
+      <section className="copy-block mt-5"><div className="flex items-center justify-between gap-2"><b className="section-label">게시 본문 미리보기</b><button className="button tiny secondary" onClick={copyBody}><Clipboard/>제목+본문 복사</button></div><strong className="body-copy-title">{displayTitle}</strong><p className="mt-3 whitespace-pre-wrap text-sm leading-7">{content.body}</p>{content.articleUrl&&<a className="article-link" href={content.articleUrl} target="_blank" rel="noreferrer"><ExternalLink/>{content.articleUrl}</a>}{content.credits&&<p className="mt-4 whitespace-pre-wrap border-t border-line pt-4 text-xs leading-6 text-muted">{content.credits}</p>}</section>
     </div>
   </article>;
 }
@@ -151,7 +152,7 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
 function InstagramTransfer({status,chromeMajor,upload,onStart,onCancel}:{status:'checking'|'available'|'unavailable'|'unsupported';chromeMajor:number|null;upload:{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number};onStart:()=>void;onCancel:()=>void}) {
   const busy=Boolean(upload.jobId)&&!['COMPLETE','ERROR','CANCELLED'].includes(upload.state);
   const progress=upload.total?Math.round((upload.current/upload.total)*100):upload.state==='OPENING_TARGET'?12:upload.state==='INJECTING'?80:upload.state==='VERIFYING'?92:8;
-  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.1.0`;
+  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.1.1`;
   if(status==='unsupported')return <section className="instagram-transfer mobile-fallback mt-4"><Instagram/><div><b>Instagram 자동 넣기는 PC Chrome 전용</b><span>{chromeMajor&&chromeMajor<148?`Chrome ${chromeMajor}에서는 사용할 수 없습니다. 148 이상으로 업데이트해 주세요.`:'모바일에서는 아래의 이미지 순차 복사나 원본 저장을 사용하세요.'}</span></div></section>;
   return <section className={`instagram-transfer mt-4 ${upload.state.toLowerCase()}`} aria-label="Instagram 자동 이미지 전달">
     <div className="instagram-transfer-head"><Instagram/><div><b>Instagram에 바로 넣기</b><span>다운로드 없이 원본 이미지를 Instagram Web 게시물 창에 전달합니다.</span></div>{status==='available'?<em><ShieldCheck/>확장 연결됨</em>:<em className="muted"><Plug/>{status==='checking'?'확인 중':'설치 필요'}</em>}</div>

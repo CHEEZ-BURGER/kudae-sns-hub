@@ -197,8 +197,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .original-status > svg { width: .9rem; color: #2e805b; }
 .original-status .text-button { margin-left: auto; }
 .copy-block { border: 1px solid #e1ddd7; border-radius: .8rem; background: #fbfaf8; padding: 1rem; }
-.article-link { display: inline-flex; align-items: center; gap: .35rem; margin-top: 1rem; color: #ff205c; font-size: .72rem; font-weight: 850; text-decoration: none; }
-.article-link svg { width: .9rem; }
+.article-link { display: inline-flex; max-width: 100%; align-items: flex-start; overflow-wrap: anywhere; gap: .35rem; margin-top: 1rem; color: #ff205c; font-size: .72rem; font-weight: 850; text-decoration: none; }
+.article-link svg { width: .9rem; flex-shrink: 0; }
 .toast { position: fixed; z-index: 50; left: 50%; bottom: 1.2rem; display: flex; max-width: calc(100% - 2rem); align-items: center; gap: .5rem; transform: translateX(-50%); border-radius: 999px; background: #1e1c1a; padding: .72rem 1rem; color: white; box-shadow: 0 10px 30px rgba(0,0,0,.2); font-size: .75rem; font-weight: 800; }
 .toast svg { width: 1rem; }
 .state-icon { display: grid; width: 3.4rem; height: 3.4rem; place-items: center; margin-inline: auto; border-radius: 1rem; background: #ffe8ef; color: #ff205c; }
