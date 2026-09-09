@@ -4,17 +4,32 @@ export const lastPreviewIssue = 2499;
 export const previewDays = ['', '月', '火', '水', '木', '金', '土', '日'];
 const daySlugs = ['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const koreanDays = '월화수목금토일';
+const calendarDays = ['日', '月', '火', '水', '木', '金', '土'];
+
+function calendarDay(date = new Date()) {
+  const value = date instanceof Date ? date : new Date(date);
+  return Number.isNaN(value.getTime()) ? '' : calendarDays[value.getDay()];
+}
 
 function standardTitle(issue, day = '') {
   const normalized = koreanDays.includes(day) && day ? previewDays[koreanDays.indexOf(day) + 1] : day;
   return `${Number(issue)}호 카드뉴스${normalized ? ` (${normalized})` : ''}`;
 }
 
-export function titleFromManuscript(filename = '', text = '', fallbackIssue = '') {
+export function titleFromManuscript(filename = '', text = '', fallbackIssue = '', date = new Date()) {
   const pattern = /(\d{4})\s*호\s*카드뉴스(?:\s*[（(]\s*([月火水木金土日월화수목금토일])(?:요일)?\s*[)）])?/u;
   const name = filename.replace(/^.*[\\/]/u, '').replace(/_/g, ' ');
-  const match = name.match(pattern) || text.split(/\r?\n/u).slice(0, 6).join('\n').match(pattern);
-  return match ? standardTitle(match[1], match[2]) : (fallbackIssue ? `${fallbackIssue} 카드뉴스` : '');
+  const nameMatch = name.match(pattern);
+  const textMatch = text.split(/\r?\n/u).slice(0, 6).join('\n').match(pattern);
+  const match = nameMatch?.[2] ? nameMatch : textMatch || nameMatch;
+  if (match) return standardTitle(match[1], match[2] || calendarDay(date));
+  const fallback = fallbackIssue.match(/(\d{4})\s*호/u);
+  return fallback ? standardTitle(fallback[1], calendarDay(date)) : '';
+}
+
+export function titleWithWeekday(title, date = new Date()) {
+  const match = title.trim().match(/^(\d{4})\s*호\s*카드뉴스(?:\s*[（(]\s*([月火水木金土日월화수목금토일])(?:요일)?\s*[)）])?$/u);
+  return match ? standardTitle(match[1], match[2] || calendarDay(date)) : title.trim();
 }
 
 export function previewForTitle(title) {
@@ -25,12 +40,12 @@ export function previewForTitle(title) {
   return { title: normalized, path: `share/${+match[1]}${day ? `-${daySlugs[previewDays.indexOf(day)]}` : ''}.html` };
 }
 
-export function distributionShareUrl(appUrl, token, title) {
+export function distributionShareUrl(appUrl, token, title, date = new Date()) {
   if (!/^[A-Za-z0-9_-]{24,80}$/u.test(token)) throw new Error('배포 링크 토큰을 확인해 주세요.');
   const url = new URL(appUrl);
   url.search = ''; url.hash = '';
   if (!url.pathname.endsWith('/')) url.pathname += '/';
-  const preview = previewForTitle(title);
+  const preview = previewForTitle(titleWithWeekday(title, date));
   if (preview) url.pathname += preview.path;
   url.hash = `/d/${token}`;
   return url.href;

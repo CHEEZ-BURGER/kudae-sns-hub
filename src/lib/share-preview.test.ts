@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { distributionShareUrl, previewForTitle, previewHtml, titleFromManuscript } from '../../shared/share-preview.mjs';
+import { distributionShareUrl, previewForTitle, previewHtml, titleFromManuscript, titleWithWeekday } from '../../shared/share-preview.mjs';
 
 const app = 'https://cheez-burger.github.io/kudae-sns-hub/';
 const token = 'example_token_12345678901234567890';
+const wednesday = new Date('2026-09-09T12:00:00+09:00');
 
 describe('카톡 미리보기 주소', () => {
   it('원고 파일명의 호수와 요일을 우선 보존한다', () => {
     expect(titleFromManuscript('자료/2045호_카드뉴스_(木).hwpx', '2046호 카드뉴스 (月)', '2046호')).toBe('2045호 카드뉴스 (木)');
     expect(titleFromManuscript('원고.txt', '2045호 카드뉴스 (목)\n\n[보도] 제목')).toBe('2045호 카드뉴스 (木)');
-    expect(titleFromManuscript('원고.docx', '', '2046호')).toBe('2046호 카드뉴스');
-    expect(titleFromManuscript('2045호 카드뉴스.hwp')).toBe('2045호 카드뉴스');
+    expect(titleFromManuscript('원고.docx', '', '2046호', wednesday)).toBe('2046호 카드뉴스 (水)');
+    expect(titleFromManuscript('2045호 카드뉴스.hwp', '', '', wednesday)).toBe('2045호 카드뉴스 (水)');
+    expect(titleFromManuscript('2045호 카드뉴스.hwp', '2045호 카드뉴스 (木)', '', wednesday)).toBe('2045호 카드뉴스 (木)');
+    expect(titleWithWeekday('2045호 카드뉴스', wednesday)).toBe('2045호 카드뉴스 (水)');
   });
 
   it('메타데이터 경로와 비공개 해시 토큰을 분리한다', () => {
@@ -17,7 +20,7 @@ describe('카톡 미리보기 주소', () => {
     expect(link).toBe(`${app}share/2045-thu.html#/d/${token}`);
     expect(new URL(link).hash).toBe(`#/d/${token}`);
     expect(previewForTitle('2045호 카드뉴스 (목요일)')).toEqual({ title: '2045호 카드뉴스 (木)', path: 'share/2045-thu.html' });
-    expect(distributionShareUrl(app, token, '2045호 카드뉴스')).toBe(`${app}share/2045.html#/d/${token}`);
+    expect(distributionShareUrl(app, token, '2045호 카드뉴스', wednesday)).toBe(`${app}share/2045-wed.html#/d/${token}`);
   });
 
   it('범위 밖 호수·자유 제목은 기존 링크로 안전하게 돌아간다', () => {

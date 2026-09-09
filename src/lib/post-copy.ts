@@ -1,6 +1,6 @@
 import type { DistributionPost } from '../types';
 import { postBody } from '../../extension/shared/post-content.mjs';
-export { postContentParts } from '../../extension/shared/post-content.mjs';
+export { postBody, postContentParts } from '../../extension/shared/post-content.mjs';
 
 function titleParts(category: string | undefined, title: string) {
   const match = title.trim().match(/^\[([^\]]+)\]\s*(.*)$/u);

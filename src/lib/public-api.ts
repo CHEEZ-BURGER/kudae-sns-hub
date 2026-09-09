@@ -18,7 +18,7 @@ export async function loadDistribution(token: string): Promise<Distribution> {
 }
 
 function cardDataUrl(label: string, number: number, color: string) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="${color}"/><text x="70" y="120" fill="white" font-family="sans-serif" font-size="38" font-weight="700">고대신문 · 2046호</text><text x="70" y="650" fill="white" font-family="sans-serif" font-size="70" font-weight="800">${label}</text><text x="70" y="750" fill="white" font-family="sans-serif" font-size="34">카드뉴스 ${number}</text></svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350"><rect width="1080" height="1350" fill="${color}"/><text x="70" y="120" fill="white" font-family="sans-serif" font-size="38" font-weight="700">고대신문 · 2046호</text><text x="70" y="650" fill="white" font-family="sans-serif" font-size="70" font-weight="700">${label}</text><text x="70" y="750" fill="white" font-family="sans-serif" font-size="34">카드뉴스 ${number}</text></svg>`;
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 

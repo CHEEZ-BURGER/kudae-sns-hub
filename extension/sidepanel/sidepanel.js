@@ -215,6 +215,7 @@ import { postBody } from '../shared/post-content.mjs';
   });
   el('copy-title').addEventListener('click', () => copyText(categorizedTitle(state.data.posts[state.activeIndex]), 'SNS 제목을 복사했습니다.').catch(() => notify('제목을 복사하지 못했습니다.')));
   el('copy-koreapas').addEventListener('click', () => copyText(koreapasTitle(state.data.posts[state.activeIndex]), '고파스 제목을 복사했습니다.').catch(() => notify('제목을 복사하지 못했습니다.')));
+  el('copy-body-only').addEventListener('click', () => copyText(postBody(state.data.posts[state.activeIndex]), '제목을 제외한 본문을 복사했습니다.').catch(() => notify('본문을 복사하지 못했습니다.')));
   el('copy-body').addEventListener('click', () => copyText(bodyWithTitle(state.data.posts[state.activeIndex]), '제목과 본문을 복사했습니다.').catch(() => notify('본문을 복사하지 못했습니다.')));
   el('copy-next-image').addEventListener('click', copyNextImage);
   el('inject-files').addEventListener('click', injectFiles);

@@ -9,7 +9,7 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.2.1');
+    expect(manifest.version).toBe('2.2.2');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
@@ -53,6 +53,8 @@ describe('Chrome extension package contract', () => {
     expect(read('extension/fonts/OFL.txt')).toContain('SIL OPEN FONT LICENSE');
     expect(read('extension/sidepanel/index.html')).toContain('href="https://cheez-burger.github.io/kudae-sns-hub/#/admin"');
     expect(read('extension/sidepanel/index.html')).toContain('id="refresh-gate"');
+    expect(read('extension/sidepanel/index.html')).toContain('id="copy-body-only"');
+    expect(read('extension/sidepanel/sidepanel.js')).toContain("el('copy-body-only')");
   });
 
   it('injects FileList on supported non-Instagram sites without private framework hooks', () => {
@@ -96,5 +98,14 @@ describe('Chrome extension package contract', () => {
     expect(read('extension/content/overlay.js')).toContain('KUDAE_CONTEXT_PING');
     expect(read('extension/shared/validators.js')).toContain('YouTube 게시물에는 이미지를 최대 10장');
     expect(read('extension/sidepanel/sidepanel.js')).toContain('YouTube 게시물에 이미지');
+  });
+
+  it('uses no heavier than Pretendard Bold and keeps default letter spacing', () => {
+    const styles = `${read('src/styles.css')}\n${read('extension/sidepanel/style.css')}`;
+    const components = ['src/components/AdminStudio.tsx', 'src/components/AdminUsersPanel.tsx', 'src/components/DistributionPage.tsx', 'src/components/LoginPage.tsx'].map(read).join('\n');
+    expect(styles).not.toMatch(/font-weight:\s*(?:7[1-9]\d|[89]\d\d|1000)/);
+    expect(styles).not.toContain('letter-spacing');
+    expect(components).not.toMatch(/font-(?:black|extrabold)|tracking-/);
+    expect(read('extension/sidepanel/style.css')).not.toContain('rotate(-3deg)');
   });
 });
