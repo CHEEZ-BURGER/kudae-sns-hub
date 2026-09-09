@@ -131,8 +131,9 @@ async function fetchWithRetry(job, asset, index, signal) {
       const blob = await response.blob();
       if (blob.size > api.MAX_FILE_BYTES) throw api.extensionError('FILE_TOO_LARGE', `${index + 1}번 파일이 500MB를 넘습니다.`, `${blob.size} bytes`, { assetIndex: index });
       const mimeType = (blob.type || response.headers.get('content-type') || asset.mimeType).split(';')[0].trim().toLowerCase();
-      const allowed = job.target === 'youtube' ? api.videoMimeTypes : api.imageMimeTypes;
+      const allowed = job.target === 'youtube' ? api.allowedMimeTypes : api.imageMimeTypes;
       if (!allowed.has(mimeType)) throw api.extensionError('UNSUPPORTED_MIME', `${index + 1}번 파일 형식을 지원하지 않습니다.`, mimeType, { assetIndex: index });
+      if (job.target === 'youtube' && mimeType.startsWith('image/') && blob.size > 16 * 1024 * 1024) throw api.extensionError('FILE_TOO_LARGE', `YouTube 게시물의 ${index + 1}번 이미지가 16MB를 넘습니다.`, `${blob.size} bytes`, { assetIndex: index });
       return new File([blob], asset.filename, { type: mimeType, lastModified: Date.now() });
     } catch (error) {
       if (signal.aborted) throw api.extensionError('USER_CANCELLED', '작업을 취소했습니다.');

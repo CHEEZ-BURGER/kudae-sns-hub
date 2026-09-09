@@ -8,7 +8,7 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.1.1');
+    expect(manifest.version).toBe('2.2.0');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
@@ -42,6 +42,10 @@ describe('Chrome extension package contract', () => {
     expect(panel).not.toContain('chrome.storage.local');
     expect(panel).toContain("import { postBody } from '../shared/post-content.mjs'");
     expect(read('extension/sidepanel/index.html')).toContain('<script type="module" src="sidepanel.js">');
+    expect(read('extension/sidepanel/index.html')).not.toContain('id="toast"');
+    expect(read('extension/sidepanel/index.html').indexOf('class="pager"')).toBeLessThan(read('extension/sidepanel/index.html').indexOf('class="post-card"'));
+    expect(read('extension/sidepanel/index.html')).toContain('href="https://cheez-burger.github.io/kudae-sns-hub/#/admin"');
+    expect(read('extension/sidepanel/index.html')).toContain('id="refresh-gate"');
   });
 
   it('injects FileList on supported non-Instagram sites without private framework hooks', () => {
@@ -72,5 +76,18 @@ describe('Chrome extension package contract', () => {
     expect(worker).toContain('chrome.storage.session');
     expect(worker).not.toContain('chrome.downloads');
     expect(worker).not.toMatch(/base64|FileSystemAccess|showSaveFilePicker/);
+  });
+
+  it('keeps all status feedback in the panel without popup overlays or shadows', () => {
+    expect(read('extension/content/overlay.js')).not.toContain('document.createElement');
+    expect(read('extension/sidepanel/sidepanel.js')).not.toContain("el('toast')");
+    expect(read('extension/sidepanel/style.css')).not.toContain('box-shadow');
+    expect(read('src/styles.css')).not.toContain('box-shadow');
+    expect(read('src/components/DistributionPage.tsx')).not.toContain('className="toast"');
+    expect(read('src/components/AdminStudio.tsx')).not.toContain('window.confirm');
+    expect(read('extension/sidepanel/sidepanel.js')).toContain('showRefreshGate');
+    expect(read('extension/content/overlay.js')).toContain('KUDAE_CONTEXT_PING');
+    expect(read('extension/shared/validators.js')).toContain('YouTube 게시물에는 이미지를 최대 10장');
+    expect(read('extension/sidepanel/sidepanel.js')).toContain('YouTube 게시물에 이미지');
   });
 });

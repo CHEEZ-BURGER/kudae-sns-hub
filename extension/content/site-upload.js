@@ -5,7 +5,7 @@
     koreapas: { hosts: ['koreapas.com'], button: /사진|이미지|첨부|파일 선택|파일 첨부|업로드/i, kind: 'image' },
     everytime: { hosts: ['everytime.kr'], button: /사진|이미지|첨부|파일 선택|파일 첨부|업로드/i, kind: 'image' },
     x: { hosts: ['x.com', 'twitter.com'], button: /미디어|사진이나 동영상 추가|add photos or video|media/i, kind: 'image' },
-    youtube: { hosts: ['youtube.com', 'studio.youtube.com'], button: /파일 선택|select files|동영상 업로드|upload videos/i, kind: 'video' },
+    youtube: { hosts: ['youtube.com', 'studio.youtube.com'], button: /이미지|사진|image|create post|게시물 만들기|파일 선택|select files|동영상 업로드|upload videos/i, kind: 'image' },
   };
 
   const hostname = location.hostname.replace(/^www\./, '');
@@ -18,13 +18,13 @@
     .filter(Boolean).join(' ').trim().replace(/\s+/g, ' ');
 
   function findUploadInput() {
-    const expected = rule.kind;
+    const expected = target === 'youtube' && files[0]?.type?.startsWith('video/') ? 'video' : rule.kind;
     const candidates = [...document.querySelectorAll('input[type="file"]')].filter((input) => !input.disabled);
     return candidates.map((input, index) => {
       const accept = (input.getAttribute('accept') || '').toLowerCase();
       let score = index;
       if (!accept || accept.includes(expected) || accept.includes(expected === 'image' ? '.jpg' : '.mp4')) score += 60;
-      if (input.multiple) score += target === 'youtube' ? 0 : 25;
+      if (input.multiple) score += expected === 'image' ? 25 : 0;
       if (input.closest('[role="dialog"],form')) score += 25;
       if (input.offsetParent !== null) score += 8;
       return { input, score };

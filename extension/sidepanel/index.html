@@ -7,7 +7,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="brand"><img class="brand-mark" src="/branding/ku-weekly-mark.png" alt="고대신문"><div><b>고대신문 배포 패널</b><span>Korea University Weekly</span></div><em id="version"></em></header>
+  <header class="brand"><a class="brand-link" href="https://cheez-burger.github.io/kudae-sns-hub/#/admin" target="_blank" title="관리자 페이지 열기"><img class="brand-mark" src="/branding/ku-weekly-mark.png" alt="고대신문 관리자 페이지"></a><div><b>고대신문 배포 패널</b><span>Korea University Weekly</span></div><em id="version"></em></header>
+  <section id="refresh-gate" class="refresh-gate" hidden>
+    <img src="/branding/ku-weekly-mark.png" alt="">
+    <span>연결을 새로 준비해야 합니다</span>
+    <h1>현재 SNS 페이지를<br>새로고침해 주세요.</h1>
+    <p id="refresh-reason">확장이 업데이트되었거나 SNS 연결 코드가 아직 적용되지 않았습니다.</p>
+    <button id="reload-current-site" type="button" class="primary">SNS 페이지 새로고침</button>
+    <button id="dismiss-refresh" type="button" class="text-button">나중에 하기</button>
+  </section>
   <main>
     <form id="link-form" class="link-card">
       <div class="section-heading"><span>STEP 1</span><label for="distribution-link">배포 링크 불러오기</label></div>
@@ -17,6 +25,7 @@
     <section id="empty" class="empty"><img src="/branding/ku-weekly-mark.png" alt=""><strong>배포 링크를 붙여 넣어 시작하세요.</strong><span>글을 불러온 뒤 SNS 탭으로 이동해도<br>오른쪽 패널은 그대로 유지됩니다.</span></section>
     <section id="workspace" hidden>
       <header class="issue"><div><span id="issue-number"></span><h1 id="issue-title"></h1></div><strong id="post-count"></strong></header>
+      <nav class="pager"><button id="previous-post" type="button" class="secondary">← 이전 글</button><span id="pager-text"></span><button id="next-post" type="button" class="primary">다음 글 →</button></nav>
       <div class="section-heading workspace-heading"><span>STEP 2</span><b>현재 SNS 연결</b></div>
       <section class="site-card"><div><i id="site-dot"></i><p><b id="site-name">지원 SNS를 열어 주세요</b><span id="site-help">Facebook · 고파스 · Instagram · YouTube · X · 에타</span></p></div><button id="refresh-site" type="button" class="icon-button" title="현재 탭 다시 확인" aria-label="현재 탭 다시 확인">↻</button></section>
       <div class="section-heading workspace-heading"><span>STEP 3</span><b>게시물 준비</b></div>
@@ -35,10 +44,9 @@
         <div id="upload-status" class="upload-status" hidden><b></b><span></span><i><u></u></i></div>
         <details class="body-preview"><summary>본문 미리보기</summary><pre id="post-body"></pre></details>
       </article>
-      <nav class="pager"><button id="previous-post" type="button" class="secondary">← 이전 글</button><span id="pager-text"></span><button id="next-post" type="button" class="primary">다음 글 →</button></nav>
     </section>
   </main>
-  <div id="toast" role="status" aria-live="polite"></div>
+  <p id="operation-status" class="operation-status" role="status" aria-live="polite">준비됨</p>
   <footer><a href="../fixture/index.html" target="_blank">확장 진단 테스트</a><span>최종 게시 버튼은 직접 눌러 주세요.</span></footer>
   <script src="../shared/constants.js"></script>
   <script src="../shared/validators.js"></script>
