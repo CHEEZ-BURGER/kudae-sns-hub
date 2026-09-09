@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
+const size = (path: string) => readFileSync(new URL(`../../${path}`, import.meta.url)).byteLength;
 
 describe('Chrome extension package contract', () => {
   it('uses Chrome 148 structured clone with a narrowly scoped side panel', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.2.0');
+    expect(manifest.version).toBe('2.2.1');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
@@ -43,7 +44,13 @@ describe('Chrome extension package contract', () => {
     expect(panel).toContain("import { postBody } from '../shared/post-content.mjs'");
     expect(read('extension/sidepanel/index.html')).toContain('<script type="module" src="sidepanel.js">');
     expect(read('extension/sidepanel/index.html')).not.toContain('id="toast"');
-    expect(read('extension/sidepanel/index.html').indexOf('class="pager"')).toBeLessThan(read('extension/sidepanel/index.html').indexOf('class="post-card"'));
+    expect(read('extension/sidepanel/index.html').indexOf('class="pager"')).toBeGreaterThan(read('extension/sidepanel/index.html').indexOf('class="post-card"'));
+    expect(read('extension/sidepanel/index.html')).toContain('The Korea University Weekly');
+    expect(read('extension/sidepanel/style.css')).toMatch(/\.pager \{ position: fixed;/);
+    expect(read('extension/sidepanel/style.css')).toContain('bottom: 12px');
+    expect(read('extension/sidepanel/style.css')).toContain("url('../fonts/PretendardVariable.woff2')");
+    expect(size('extension/fonts/PretendardVariable.woff2')).toBeGreaterThan(1_000_000);
+    expect(read('extension/fonts/OFL.txt')).toContain('SIL OPEN FONT LICENSE');
     expect(read('extension/sidepanel/index.html')).toContain('href="https://cheez-burger.github.io/kudae-sns-hub/#/admin"');
     expect(read('extension/sidepanel/index.html')).toContain('id="refresh-gate"');
   });

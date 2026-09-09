@@ -115,7 +115,7 @@ Settings → Pages → Build and deployment의 Source를 **GitHub Actions**로 �
 ```powershell
 git init
 git add .
-git commit -m "Build Korea University Newspaper SNS distribution tool"
+git commit -m "Build The Korea University Weekly SNS distribution tool"
 git branch -M main
 git remote add origin https://github.com/계정/저장소.git
 git push -u origin main
@@ -151,7 +151,7 @@ git push -u origin main
 - 정적 호스팅 특성상 빌드 때 2000~2499호 × 8종(요일 없음 또는 7요일)의 작은 HTML 4,000개를 생성합니다. `shared/share-preview.mjs`에서 범위를 늘릴 수 있습니다. 자유 형식 제목과 범위 밖 호수는 기본 사이트 이름의 기존 주소로 돌아갑니다. 생성 페이지에는 실제 원고, 이미지 원본, 공유 토큰을 넣지 않습니다.
 - 기존 `#/d/토큰` 링크도 계속 열립니다. 이미 보낸 카톡 메시지의 미리보기가 자동으로 바뀌지는 않으므로 최근 배포에서 링크를 새로 복사해 보내세요. 제목/요일 수정 후에도 새 링크를 복사해야 하며, 예전 미리보기 주소는 그때의 제목을 유지하지만 실제 내용은 최신 DB 내용을 표시합니다.
 - 카카오는 자체 OG 캐시를 사용합니다. 미리보기가 갱신되지 않으면 [카카오 OG 캐시 초기화](https://developers.kakao.com/tool/clear/og)를 사용할 수 있습니다. 실제 카톡 표시 여부는 카카오 앱에서 최종 확인해야 합니다.
-- 본문 미리보기·복사·확장 패널은 동일한 `extension/shared/post-content.mjs`를 사용해 **기사 안내문 → 기사 URL → 크레딧** 순서로 정리합니다. 기존 배포 데이터도 다시 업로드할 필요가 없고, 원문 중간 참고 링크는 보존합니다. 확장은 최신 ZIP(v2.2.0)으로 교체 후 새로고침해야 합니다.
+- 본문 미리보기·복사·확장 패널은 동일한 `extension/shared/post-content.mjs`를 사용해 **기사 안내문 → 기사 URL → 크레딧** 순서로 정리합니다. 기존 배포 데이터도 다시 업로드할 필요가 없고, 원문 중간 참고 링크는 보존합니다. 확장은 최신 ZIP(v2.2.1)으로 교체 후 새로고침해야 합니다.
 
 ## Chrome 배포 패널 설치
 
