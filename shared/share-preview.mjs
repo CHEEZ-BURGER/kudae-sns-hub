@@ -5,6 +5,7 @@ export const previewDays = ['', '月', '火', '水', '木', '金', '土', '日']
 const daySlugs = ['', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const koreanDays = '월화수목금토일';
 const calendarDays = ['日', '月', '火', '水', '木', '金', '土'];
+const fullKoreanDays = { 月: '월요일', 火: '화요일', 水: '수요일', 木: '목요일', 金: '금요일', 土: '토요일', 日: '일요일' };
 
 function calendarDay(date = new Date()) {
   const value = date instanceof Date ? date : new Date(date);
@@ -40,6 +41,16 @@ export function previewForTitle(title) {
   return { title: normalized, path: `share/${+match[1]}${day ? `-${daySlugs[previewDays.indexOf(day)]}` : ''}.html` };
 }
 
+export function previewImageForTitle(title) {
+  const preview = previewForTitle(title);
+  if (!preview) return null;
+  const day = preview.title.match(/\((.)\)/u)?.[1] || '';
+  return {
+    path: preview.path.replace(/^share\//u, 'share-images/').replace(/\.html$/u, '.png'),
+    label: `${preview.title.match(/^\d+호/u)?.[0] || ''}${day ? ` (${fullKoreanDays[day]})` : ''}`,
+  };
+}
+
 export function distributionShareUrl(appUrl, token, title, date = new Date()) {
   if (!/^[A-Za-z0-9_-]{24,80}$/u.test(token)) throw new Error('배포 링크 토큰을 확인해 주세요.');
   const url = new URL(appUrl);
@@ -55,7 +66,8 @@ const escapeAttribute = (value) => value.replaceAll('&', '&amp;').replaceAll('"'
 
 export function previewHtml(appHtml, title, appUrl) {
   const safeTitle = escapeAttribute(title);
-  const image = escapeAttribute(new URL('branding/ku-weekly-mark.png', appUrl).href);
+  const previewImage = previewImageForTitle(title);
+  const image = escapeAttribute(new URL(previewImage?.path || 'branding/ku-weekly-mark.png', appUrl).href);
   // Serve the app itself: no crawler-sensitive redirect, and #/d/token still works.
   return appHtml.replace(/<title>[^<]*<\/title>/u, `<title>${safeTitle}</title>`).replace('</head>', `
     <meta name="robots" content="noindex, nofollow" />
@@ -65,6 +77,6 @@ export function previewHtml(appHtml, title, appUrl) {
     <meta property="og:description" content="고대신문 카드뉴스 배포 · 제목과 본문 복사 · 원본 이미지·영상 받기" />
     <meta property="og:image" content="${image}" />
     <meta property="og:image:width" content="800" />
-    <meta property="og:image:height" content="800" />
+    <meta property="og:image:height" content="400" />
   </head>`);
 }

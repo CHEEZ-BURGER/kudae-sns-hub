@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build && node scripts/build-share-previews.mjs && npm run extension:package",
@@ -23,6 +25,7 @@
     "react-dom": "^19.1.1"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.9",
     "@tailwindcss/vite": "^4.1.13",
     "@types/node": "^22.18.6",
     "@types/react": "^19.1.16",

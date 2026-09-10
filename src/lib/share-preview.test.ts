@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { distributionShareUrl, previewForTitle, previewHtml, titleFromManuscript, titleWithWeekday } from '../../shared/share-preview.mjs';
+import { distributionShareUrl, previewForTitle, previewHtml, previewImageForTitle, titleFromManuscript, titleWithWeekday } from '../../shared/share-preview.mjs';
 
 const app = 'https://cheez-burger.github.io/kudae-sns-hub/';
 const token = 'example_token_12345678901234567890';
@@ -33,7 +33,10 @@ describe('카톡 미리보기 주소', () => {
   it('JS 실행 전 HTML에 제목과 로고가 있고 기존 앱을 그대로 제공한다', () => {
     const html = previewHtml('<html><head><title>기본</title><script type="module" src="/kudae-sns-hub/assets/app.js"></script></head><body><div id="root"></div></body></html>', '2045호 카드뉴스 (木)', app);
     expect(html).toContain('<meta property="og:title" content="2045호 카드뉴스 (木)"');
-    expect(html).toContain(`${app}branding/ku-weekly-mark.png`);
+    expect(html).toContain(`${app}share-images/2045-thu.png`);
+    expect(html).toContain('<meta property="og:image:width" content="800"');
+    expect(html).toContain('<meta property="og:image:height" content="400"');
+    expect(previewImageForTitle('2045호 카드뉴스 (木)')).toEqual({ path: 'share-images/2045-thu.png', label: '2045호 (목요일)' });
     expect(html).toContain('/kudae-sns-hub/assets/app.js');
     expect(html).not.toContain(token);
     expect(html).not.toContain('og:url'); // Do not replace the clicked bearer link with a token-free canonical URL.
