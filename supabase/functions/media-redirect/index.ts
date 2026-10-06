@@ -31,6 +31,6 @@ Deno.serve(async(request)=>{
     const path=kind==='original'?asset.original_path:asset.thumbnail_path;
     if(!path || !isExternalMediaPath(path))return error('외부 저장소 파일이 아닙니다.',404);
     // Return only a redirect. Image/video bytes must never pass through Supabase.
-    return new Response(null,{status:302,headers:{...cors,Location:await externalMediaUrl(path),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+    return new Response(null,{status:302,headers:{...cors,Location:await externalMediaUrl(path,request.method==='HEAD'?'HEAD':'GET'),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   }catch(err){console.error('Media redirect failed',err);return error('원본을 불러오지 못했습니다.',503);}
 });

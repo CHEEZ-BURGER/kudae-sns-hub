@@ -1,4 +1,4 @@
-import { GetObjectCommand, S3Client } from 'npm:@aws-sdk/client-s3@3.1146.0';
+import { GetObjectCommand, HeadObjectCommand, S3Client } from 'npm:@aws-sdk/client-s3@3.1146.0';
 import { getSignedUrl } from 'npm:@aws-sdk/s3-request-presigner@3.1146.0';
 import { awsMediaConfigured, cloudFrontMediaUrl } from './aws-media.ts';
 import { externalMediaKey, mediaPathBackend, type ExternalBackend } from './media-paths.ts';
@@ -31,10 +31,11 @@ export function mediaStore(backend: ExternalBackend) {
   return { client, bucket: Deno.env.get(r2 ? 'SNS_R2_BUCKET' : 'SNS_S3_BUCKET')! };
 }
 
-export async function externalMediaUrl(path: string) {
+export async function externalMediaUrl(path: string, method: 'GET' | 'HEAD' = 'GET') {
   if (mediaPathBackend(path) === 'aws') return cloudFrontMediaUrl(path);
   const { client, bucket } = mediaStore('r2');
-  return await getSignedUrl(client, new GetObjectCommand({
-    Bucket: bucket, Key: externalMediaKey(path), ResponseCacheControl: 'no-store',
-  }), { expiresIn: 900 });
+  const command = method === 'HEAD'
+    ? new HeadObjectCommand({ Bucket: bucket, Key: externalMediaKey(path) })
+    : new GetObjectCommand({ Bucket: bucket, Key: externalMediaKey(path), ResponseCacheControl: 'no-store' });
+  return await getSignedUrl(client, command, { expiresIn: 900 });
 }

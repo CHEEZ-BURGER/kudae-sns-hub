@@ -101,6 +101,9 @@ npx deno run --node-modules-dir=none --no-lock --env-file=.env.r2-migration.loca
 
 `scripts/r2-connection-check.ts`는 버킷 목록과 서명 URL의 OPTIONS만 확인합니다.
 실제 파일을 만들거나 다운로드하지 않으며 키/서명 URL을 출력하지 않습니다.
+`scripts/r2-upload-check.ts`는 관리자와 같은 서명/브라우저 PUT 헤더로 68바이트
+PNG 한 개를 `connection-check/<새 UUID>/original.png`에 올려 원본/크기/형식을
+확인하고 그 정확한 임시 객체만 정리합니다. 이 검사도 실제 R2에서 통과했습니다.
 
 `scripts/r2-compatibility-check.ts`의 `--prepare`는 이미 검증된 원본 두 개를
 참조하는 별도 임시 배포를 만듭니다. 실제 배포나 원본 파일은 수정하지 않습니다.

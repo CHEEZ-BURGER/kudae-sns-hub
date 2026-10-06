@@ -56,6 +56,8 @@ try {
         const old = oldPublication.posts.flatMap((post: any) => post.assets).find((item: any) => item.id === sample.id);
         for (const [url, column] of [[sample.originalUrl, 'original_path'], [sample.thumbUrl, 'thumbnail_path']]) {
           const record = report.copied[`${old.id}:${old[column]}`];
+          const headResponse = await fetch(url, { method: 'HEAD', cache: 'no-store' });
+          assert(headResponse.ok && Number(headResponse.headers.get('content-length')) === record.size, 'File metadata HEAD request failed');
           const fileResponse = await fetch(url, { headers: { Origin: 'https://cheez-burger.github.io' }, cache: 'no-store' });
           assert(fileResponse.ok && new URL(fileResponse.url).hostname === '8b7ca7970b7974eadb7a807141a46779.r2.cloudflarestorage.com', 'Public file does not download directly from R2');
           const bytes = new Uint8Array(await fileResponse.arrayBuffer());
