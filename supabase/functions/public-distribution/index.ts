@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { compatibilityMediaUrl } from '../_shared/aws-media.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,9 +46,15 @@ Deno.serve(async (request) => {
   const postIds = (posts ?? []).map((post) => post.id);
   const { data: assets } = postIds.length ? await client.from('assets').select('id, post_id, filename, size_bytes, mime_type, thumbnail_path, original_path, position').in('post_id', postIds).order('position') : { data: [] };
 
-  const allPaths = [...new Set((assets ?? []).flatMap((asset) => [asset.thumbnail_path, asset.original_path].filter(Boolean) as string[]))];
+  const allPaths = [...new Set((assets ?? []).flatMap((asset) => [asset.thumbnail_path, asset.original_path].filter((path) => path && !path.startsWith('s3:')) as string[]))];
   const { data: signed } = await client.storage.from('sns-assets').createSignedUrls(allPaths, 60 * 60);
   const signedMap = new Map((signed ?? []).map((item) => [item.path, item.signedUrl]));
+  // Keep the trusted Supabase host in originalUrl so existing extensions accept AWS-backed files.
+  const awsUrls = new Map<string,string>();
+  for (const asset of assets ?? []) {
+    if (asset.original_path.startsWith('s3:')) awsUrls.set(`${asset.id}:original`,await compatibilityMediaUrl(supabaseUrl,serviceRoleKey,asset.id,'original'));
+    if (asset.thumbnail_path.startsWith('s3:')) awsUrls.set(`${asset.id}:thumb`,await compatibilityMediaUrl(supabaseUrl,serviceRoleKey,asset.id,'thumb'));
+  }
 
   return json({
     id: publication.id,
@@ -59,7 +66,7 @@ Deno.serve(async (request) => {
       id: post.id, category: post.category || '보도', title: post.title, body: post.body, articleUrl: post.article_url ?? '', credits: post.credits ?? '', position: post.position,
       assets: (assets ?? []).filter((asset) => asset.post_id === post.id).map((asset) => ({
         id: asset.id, filename: asset.filename, sizeBytes: Number(asset.size_bytes), mimeType: asset.mime_type, position: asset.position,
-        thumbUrl: signedMap.get(asset.thumbnail_path) ?? '', originalUrl: signedMap.get(asset.original_path) ?? '',
+        thumbUrl: awsUrls.get(`${asset.id}:thumb`) ?? signedMap.get(asset.thumbnail_path) ?? '', originalUrl: awsUrls.get(`${asset.id}:original`) ?? signedMap.get(asset.original_path) ?? '',
       })),
     })),
   });

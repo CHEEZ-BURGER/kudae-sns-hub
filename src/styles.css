@@ -83,6 +83,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .confidence.medium { background: #fff4d8; color: #80611e; }
 .confidence.low { background: #fff0f0; color: #9b3535; }
 .image-order-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: .5rem; }
+.admin-media-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1rem .65rem; }
+.admin-media-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: .45rem 0; font-size: .7rem; color: #6e6267; }
+.admin-media-controls { display: flex; flex-wrap: wrap; gap: .25rem; }
+.admin-media-controls button { display: inline-flex; align-items: center; justify-content: center; gap: .2rem; min-height: 2rem; padding: .3rem .4rem; border: 1px solid #f0dfe5; border-radius: .4rem; background: white; font-size: .68rem; cursor: pointer; transition: background .15s ease; }
+.admin-media-controls button:hover { background: #fffafb; }
+.admin-media-controls button:disabled { opacity: .3; cursor: default; }
+.admin-media-controls svg { width: .8rem; height: .8rem; }
+.admin-video-placeholder { display: grid; height: 100%; place-content: center; justify-items: center; gap: .5rem; color: #6e6267; font-size: .8rem; }
+.admin-video-placeholder svg { width: 2rem; height: 2rem; }
 .image-order-item { position: relative; aspect-ratio: 4/5; overflow: hidden; border: 1px solid #f0dfe5; border-radius: .65rem; background: #f6eff1; cursor: grab; }
 .image-order-item img, .image-order-item video { width: 100%; height: 100%; object-fit: cover; }
 .image-order-item > span { position: absolute; left: .35rem; bottom: .35rem; display: grid; width: 1.35rem; height: 1.35rem; place-items: center; border-radius: .4rem; background: rgba(17,16,15,.78); color: white; font-size: .62rem; font-weight: 700; }

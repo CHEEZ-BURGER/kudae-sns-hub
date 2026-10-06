@@ -24,12 +24,37 @@ export async function resizeImage(file: File, maxSize: number, quality: number):
   return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('이미지 변환에 실패했습니다.')), 'image/jpeg', quality));
 }
 
+const sessionMedia = new Map<string, Promise<Blob>>();
+const sessionSizes = new Map<string, number>();
+const memoryLimit = 96 * 1024 * 1024;
+
+export function clearSessionMedia() {
+  sessionMedia.clear(); sessionSizes.clear();
+}
+if (typeof window !== 'undefined') window.addEventListener('pagehide', clearSessionMedia);
+
 async function fetchBlob(url: string) {
-  // Original media is fetched only when the user copies or downloads it.
-  // `no-store` prevents the browser HTTP cache from retaining another copy.
-  const response = await fetch(url, { cache: 'no-store' });
-  if (!response.ok) throw new Error('원본 파일을 불러오지 못했습니다. 링크를 새로고침해 주세요.');
-  return response.blob();
+  const existing = sessionMedia.get(url);
+  if (existing) return existing;
+  const pending = (async () => {
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) throw new Error('원본 파일을 불러오지 못했습니다. 링크를 새로고침해 주세요.');
+    const blob = await response.blob();
+    if (blob.size > 16 * 1024 * 1024) {
+      sessionMedia.delete(url); // Do not retain large videos in browser memory.
+    } else {
+      sessionSizes.set(url, blob.size);
+      while ([...sessionSizes.values()].reduce((a,b)=>a+b,0) > memoryLimit) {
+        const oldest = sessionSizes.keys().next().value;
+        if (!oldest) break;
+        sessionSizes.delete(oldest); sessionMedia.delete(oldest);
+      }
+    }
+    return blob;
+  })();
+  sessionMedia.set(url, pending);
+  pending.catch(() => { sessionMedia.delete(url); sessionSizes.delete(url); });
+  return pending;
 }
 
 export function isVideoAsset(asset: DistributionAsset) {

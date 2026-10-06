@@ -2,6 +2,7 @@ import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 're
 import type { Session } from '@supabase/supabase-js';
 import { AlertCircle, Archive, ArrowDown, ArrowUp, Check, ChevronRight, CirclePlus, Clipboard, FileArchive, FileText, GripVertical, Images, Link2, LoaderCircle, Pencil, Plus, Send, Sparkles, Trash2, UploadCloud, X } from 'lucide-react';
 import type { DraftPost, SourceSection } from '../types';
+import { appendDraftMedia, draftFilename, draftIsVideo, draftSize, releaseDraftPreview, removeDraftMedia, replaceDraftMedia } from '../lib/draft-media';
 import { AppHeader } from './AppHeader';
 import { AdminUsersPanel } from './AdminUsersPanel';
 import { expandFiles, extractManuscript, filesFromDataTransfer, partitionSupportedFiles } from '../lib/document-parser';
@@ -54,6 +55,8 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
   const [dragAssetId, setDragAssetId] = useState('');
   const [recent, setRecent] = useState<Array<Record<string, string | null>>>([]);
   const [editingPublicationId, setEditingPublicationId] = useState('');
+  const [editingRevision, setEditingRevision] = useState('');
+  const [editingExpiresAt, setEditingExpiresAt] = useState<string | null>(null);
   const [loadingEditId, setLoadingEditId] = useState('');
   const [showAdminUsers, setShowAdminUsers] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -82,9 +85,11 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
       setPublicationTitle(editable.title);
       setPosts(editable.posts);
       setSections([]);
-      setPendingMedia(editable.posts.flatMap((post) => post.assets.map((asset) => asset.file)));
+      setPendingMedia([]);
       setPasteText(''); setWarnings([]); setShowPaste(false);
       setEditingPublicationId(editable.id);
+      setEditingRevision(editable.updatedAt);
+      setEditingExpiresAt(editable.expiresAt);
       setShareUrl(shareLink(editable.shareToken, editable.title));
       setStage('edit');
     } catch (error) {
@@ -95,7 +100,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
   function resetStudio() {
     posts.flatMap((post) => post.assets).forEach((asset) => { if (asset.previewUrl.startsWith('blob:')) URL.revokeObjectURL(asset.previewUrl); });
     setStage('upload'); setPosts([]); setSections([]); setPendingMedia([]); setPasteText('');
-    setEditingPublicationId(''); setShareUrl(''); setWarnings([]); setMessage('');
+    setEditingPublicationId(''); setEditingRevision(''); setEditingExpiresAt(null); setShareUrl(''); setWarnings([]); setMessage('');
   }
 
   async function receiveFiles(files: File[]) {
@@ -192,7 +197,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
     if (posts.some((post) => !post.title.trim() || !post.body.trim())) { setMessage('제목이나 본문이 비어 있는 게시물을 확인해 주세요.'); return; }
     setStage('publishing'); setMessage('');
     try {
-      const result = await publishDistribution({ issueNumber, title: publicationTitle, posts, existingPublicationId: editingPublicationId || undefined }, (label, value) => setProgress({ label, value }));
+      const result = await publishDistribution({ issueNumber, title: publicationTitle, posts, existingPublicationId: editingPublicationId || undefined, expectedUpdatedAt: editingRevision || undefined, expiresAt: editingExpiresAt }, (label, value) => setProgress({ label, value }));
       if (!result.token) throw new Error('공유 토큰 생성에 실패했습니다.');
       setShareUrl(shareLink(result.token, publicationTitle));
       setStage('done');
@@ -210,7 +215,7 @@ export function AdminStudio({ session, demoMode = false }: AdminStudioProps) {
     setPasteText(sampleManuscript); setPendingMedia(files); analyse(files, sampleManuscript);
   }
 
-  const totalBytes = useMemo(() => posts.flatMap((post) => post.assets).reduce((sum, asset) => sum + asset.file.size, 0), [posts]);
+  const totalBytes = useMemo(() => posts.flatMap((post) => post.assets).reduce((sum, asset) => sum + draftSize(asset), 0), [posts]);
 
   return (
     <div className="min-h-screen bg-canvas text-ink">
@@ -284,13 +289,55 @@ function EditStage(props: EditProps) {
     <div className="space-y-5">{props.posts.map((post,index)=><article className="panel overflow-hidden" key={post.id}>
       <header className="flex items-center justify-between gap-4 border-b border-line bg-white px-4 py-3 sm:px-5"><div className="flex min-w-0 items-center gap-3"><span className="grid size-7 shrink-0 place-items-center rounded-lg bg-crimson text-xs font-bold text-white">{index+1}</span><div className="min-w-0"><b className="block truncate text-sm">{post.groupName}</b><span className={`confidence ${post.confidence>=.7?'high':post.confidence>=.4?'medium':'low'}`}>매칭 {confidenceLabel(post.confidence)} · {Math.round(post.confidence*100)}%</span></div></div><button className="icon-button danger" title="게시물 삭제" onClick={()=>props.setPosts((current)=>current.filter((item)=>item.id!==post.id))}><Trash2/></button></header>
       <div className="grid gap-6 p-4 sm:p-5 xl:grid-cols-[minmax(280px,.8fr)_minmax(380px,1.2fr)]">
-        <div><div className="mb-2 flex items-center justify-between"><b className="section-label">미디어 순서</b><span className="text-xs text-muted">{post.assets.length}개</span></div>{post.assets.length ? <div className="image-order-grid">{post.assets.map((asset,assetIndex)=><div className="image-order-item" draggable onDragStart={()=>props.setDragAssetId(asset.id)} onDragOver={(e)=>e.preventDefault()} onDrop={()=>props.reorderAsset(post.id,asset.id)} key={asset.id}>{isVideoFile(asset.file.name)||asset.file.type.startsWith('video/')?<video src={asset.previewUrl} muted preload="metadata"/>:<img src={asset.previewUrl} alt=""/>}<span>{assetIndex+1}</span><GripVertical className="grip"/><div className="move-buttons"><button onClick={()=>props.moveAsset(post.id,asset.id,-1)} title="앞으로"><ArrowUp/></button><button onClick={()=>props.moveAsset(post.id,asset.id,1)} title="뒤로"><ArrowDown/></button></div></div>)}</div> : <div className="empty-inline"><Images/><span>연결된 이미지나 영상이 없습니다.</span></div>}</div>
+        <AdminMediaEditor post={post} onChange={(assets)=>props.updatePost(post.id,{assets})} onMove={(id,direction)=>props.moveAsset(post.id,id,direction)} onDrag={props.setDragAssetId} onReorder={(id)=>props.reorderAsset(post.id,id)}/>
         <div className="space-y-4"><label className="field"><span>원고 연결</span><select value={post.sectionId} onChange={(e)=>props.selectSection(post.id,e.target.value)}><option value="">직접 입력 / 연결 안 함</option>{props.sections.map((section)=><option value={section.id} key={section.id}>{section.header}</option>)}</select></label><div className="grid gap-4 sm:grid-cols-[minmax(150px,.35fr)_minmax(0,1fr)]"><label className="field"><span>분류</span><input value={post.category} onChange={(e)=>props.updatePost(post.id,{category:e.target.value})} placeholder="보도"/></label><label className="field"><span>제목</span><input value={post.title} onChange={(e)=>props.updatePost(post.id,{title:e.target.value})}/></label></div><label className="field"><span>본문 · 원고의 크레딧이 자동으로 포함됩니다</span><textarea className="min-h-40" value={post.body} onChange={(e)=>props.updatePost(post.id,{body:e.target.value})}/></label><div className="grid gap-4 sm:grid-cols-2"><label className="field"><span>기사 URL</span><input type="url" value={post.articleUrl} onChange={(e)=>props.updatePost(post.id,{articleUrl:e.target.value})}/></label><label className="field"><span>추가 크레딧 (선택)</span><textarea className="min-h-20" value={post.credits} onChange={(e)=>props.updatePost(post.id,{credits:e.target.value})}/></label></div></div>
       </div>
     </article>)}</div>
     <button className="add-post mt-5" onClick={props.addPost}><CirclePlus/>게시물 직접 추가</button>
     <div className="sticky-actions"><button className="button ghost" onClick={props.reset}>{props.editing?'수정 취소':'처음부터'}</button><button className="button primary" onClick={props.publish} title={props.demoMode?'Supabase 연결 후 사용 가능':''}><Send/>{props.demoMode?'배포 설정 필요':props.editing?'수정 내용 저장':'배포하기'}</button></div>
   </>;
+}
+
+function AdminMediaEditor({post,onChange,onMove,onDrag,onReorder}:{post:DraftPost;onChange:(assets:DraftPost['assets'])=>void;onMove:(id:string,direction:-1|1)=>void;onDrag:(id:string)=>void;onReorder:(id:string)=>void}) {
+  const addInput=useRef<HTMLInputElement>(null);
+  const replaceInput=useRef<HTMLInputElement>(null);
+  const replacementId=useRef('');
+  const [notice,setNotice]=useState('');
+  const [confirmDelete,setConfirmDelete]=useState('');
+  const accept='image/*,video/mp4,video/quicktime,video/webm,.m4v';
+  function receive(files:File[],replaceId='') {
+    const {media,unsupported,manuscripts}=partitionSupportedFiles(files);
+    if(replaceId && media.length!==1){setNotice('교체할 이미지 또는 영상 한 개를 선택해 주세요.');return;}
+    if(!media.length){setNotice('이미지 또는 영상 파일을 선택해 주세요.');return;}
+    const previous=post.assets.find((asset)=>asset.id===replaceId);
+    onChange(replaceId?replaceDraftMedia(post.assets,replaceId,media[0]):appendDraftMedia(post.assets,media));
+    if(previous)releaseDraftPreview(previous);
+    setConfirmDelete('');
+    setNotice(unsupported.length||manuscripts.length?'이미지·영상만 추가했습니다.':replaceId?'한 장을 교체했습니다. 저장하면 기존 배포에 반영됩니다.':`${media.length}개를 추가했습니다. 저장하면 기존 배포에 반영됩니다.`);
+  }
+  function remove(id:string) {
+    if(confirmDelete!==id){setConfirmDelete(id);return;}
+    const previous=post.assets.find((asset)=>asset.id===id);
+    onChange(removeDraftMedia(post.assets,id));
+    if(previous)releaseDraftPreview(previous);
+    setConfirmDelete('');setNotice('목록에서 제거했습니다. 저장 전까지 배포된 원본은 유지됩니다.');
+  }
+  return <section className="admin-media-editor" aria-label={`${post.groupName} 미디어 편집`} onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{event.preventDefault();if(event.dataTransfer.files.length)receive([...event.dataTransfer.files]);}}>
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-2"><div><b className="section-label">이미지·영상 {post.assets.length}개</b><p className="mt-1 text-xs text-muted">한 장만 교체하거나 추가·삭제할 수 있습니다.</p></div><button className="button tiny secondary" type="button" onClick={()=>addInput.current?.click()}><Plus/>파일 추가</button></div>
+    <input ref={addInput} type="file" hidden multiple accept={accept} aria-label="게시물에 파일 추가" onChange={(event)=>{receive([...event.target.files??[]]);event.target.value='';}}/>
+    <input ref={replaceInput} type="file" hidden accept={accept} aria-label="선택한 파일 교체" onChange={(event)=>{receive([...event.target.files??[]],replacementId.current);event.target.value='';}}/>
+    {post.assets.length?<div className="admin-media-grid">{post.assets.map((asset,index)=><div className="admin-media-tile" key={asset.id}>
+      <div className="image-order-item" draggable onDragStart={()=>onDrag(asset.id)} onDragEnd={()=>onDrag('')} onDragOver={(event)=>event.preventDefault()} onDrop={(event)=>{if(!event.dataTransfer.files.length){event.stopPropagation();event.preventDefault();onReorder(asset.id);}}}>
+        {draftIsVideo(asset)?<div className="admin-video-placeholder"><FileArchive/><span>영상</span></div>:<img loading="lazy" src={asset.previewUrl} alt={`${index+1}번 ${draftFilename(asset)}`}/>}
+        <span>{index+1}</span><GripVertical className="grip"/>
+      </div>
+      <p className="admin-media-name" title={draftFilename(asset)}>{draftFilename(asset)}</p>
+      <div className="admin-media-controls"><button type="button" disabled={index===0} onClick={()=>onMove(asset.id,-1)} aria-label={`${index+1}번 앞으로`}><ArrowUp/></button><button type="button" disabled={index===post.assets.length-1} onClick={()=>onMove(asset.id,1)} aria-label={`${index+1}번 뒤로`}><ArrowDown/></button><button type="button" onClick={()=>{replacementId.current=asset.id;replaceInput.current?.click();}} aria-label={`${index+1}번 파일 교체`}><Pencil/>교체</button><button type="button" className="danger" onClick={()=>remove(asset.id)} aria-label={`${index+1}번 파일 삭제`}><Trash2/>{confirmDelete===asset.id?'확정':'삭제'}</button></div>
+      {confirmDelete===asset.id&&<button className="text-button text-xs" type="button" onClick={()=>setConfirmDelete('')}>삭제 취소</button>}
+    </div>)}</div>:<button type="button" className="add-post" onClick={()=>addInput.current?.click()}><Images/>이미지·영상 추가 또는 여기에 놓기</button>}
+    {notice&&<p className="mt-3 text-xs leading-5 text-muted" role="status">{notice}</p>}
+    {post.assets.some((asset)=>asset.stored)&&<p className="mt-3 text-xs leading-5 text-muted">기존 원본은 그대로 사용하고, 새로 추가·교체한 파일만 업로드합니다.</p>}
+  </section>;
 }
 
 function PublishingStage({ progress }: { progress: {label:string;value:number} }) {

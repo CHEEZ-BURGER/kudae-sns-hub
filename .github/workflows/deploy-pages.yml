@@ -29,6 +29,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY_DEPLOY || secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_MEDIA_BACKEND: ${{ vars.VITE_MEDIA_BACKEND || 'supabase' }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

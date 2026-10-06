@@ -11,7 +11,15 @@ export type SourceSection = {
 
 export type DraftAsset = {
   id: string;
-  file: File;
+  file?: File;
+  stored?: {
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    originalPath: string;
+    thumbnailPath: string;
+    optimizedPath: string | null;
+  };
   previewUrl: string;
   order: number;
 };
