@@ -1,4 +1,5 @@
 import { edgeFunctionUrl, requireSupabase, publishableKey } from './supabase';
+import { isExternalMediaPath } from '../../supabase/functions/_shared/media-paths';
 
 async function mediaAdmin(input: Record<string, unknown>) {
   const client = requireSupabase();
@@ -14,28 +15,31 @@ async function mediaAdmin(input: Record<string, unknown>) {
 }
 
 export async function uploadMedia(path: string, body: Blob, contentType: string) {
-  if (import.meta.env.VITE_MEDIA_BACKEND !== 'aws') {
+  const backend = import.meta.env.VITE_MEDIA_BACKEND || 'supabase';
+  if (!['supabase', 'aws', 'r2'].includes(backend)) throw new Error('파일 저장소 설정을 확인해 주세요.');
+  if (backend === 'supabase') {
     const { error } = await requireSupabase().storage.from('sns-assets').upload(path, body, { contentType, upsert: false });
     if (error) throw error;
     return path;
   }
-  const result = await mediaAdmin({ action: 'upload', path, contentType, sizeBytes: body.size });
+  const result = await mediaAdmin({ action: 'upload', backend, path, contentType, sizeBytes: body.size });
   const response = await fetch(result.uploadUrl, { method: 'PUT', body, headers: { 'Content-Type': contentType } });
   if (!response.ok) throw new Error('원본 업로드에 실패했습니다. 파일을 유지한 채 다시 시도해 주세요.');
+  await mediaAdmin({ action: 'verify', path: result.storedPath, sizeBytes: body.size, contentType });
   return result.storedPath as string;
 }
 
 export async function previewMedia(paths: string[]) {
   const result = new Map<string, string>();
-  const supabasePaths = [...new Set(paths.filter((path) => !path.startsWith('s3:')))];
-  const awsPaths = [...new Set(paths.filter((path) => path.startsWith('s3:')))];
+  const supabasePaths = [...new Set(paths.filter((path) => !isExternalMediaPath(path)))];
+  const externalPaths = [...new Set(paths.filter(isExternalMediaPath))];
   if (supabasePaths.length) {
     const { data, error } = await requireSupabase().storage.from('sns-assets').createSignedUrls(supabasePaths, 3600);
     if (error) throw error;
     data?.forEach((item) => { if (item.path && item.signedUrl) result.set(item.path, item.signedUrl); });
   }
-  if (awsPaths.length) {
-    const response = await mediaAdmin({ action: 'preview', paths: awsPaths });
+  if (externalPaths.length) {
+    const response = await mediaAdmin({ action: 'preview', paths: externalPaths });
     for (const item of response.urls) result.set(item.path, item.url);
   }
   return result;
@@ -53,11 +57,11 @@ export async function removeMedia(paths: string[]) {
     }
     if (!retained) safe.push(path);
   }
-  const supabasePaths = safe.filter((path) => !path.startsWith('s3:'));
-  const awsPaths = safe.filter((path) => path.startsWith('s3:'));
+  const supabasePaths = safe.filter((path) => !isExternalMediaPath(path));
+  const externalPaths = safe.filter(isExternalMediaPath);
   if (supabasePaths.length) {
     const { error } = await requireSupabase().storage.from('sns-assets').remove(supabasePaths);
     if (error) throw error;
   }
-  if (awsPaths.length) await mediaAdmin({ action: 'delete', paths: awsPaths });
+  if (externalPaths.length) await mediaAdmin({ action: 'delete', paths: externalPaths });
 }

@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { compatibilityMediaUrl } from '../_shared/aws-media.ts';
+import { isExternalMediaPath } from '../_shared/media-paths.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -44,16 +45,18 @@ Deno.serve(async (request) => {
   const { data: posts, error: postsError } = await client.from('posts').select('id, category, title, body, article_url, credits, position').eq('publication_id', publication.id).order('position');
   if (postsError) return json({ error: '게시물을 불러오지 못했습니다.' }, 500);
   const postIds = (posts ?? []).map((post) => post.id);
-  const { data: assets } = postIds.length ? await client.from('assets').select('id, post_id, filename, size_bytes, mime_type, thumbnail_path, original_path, position').in('post_id', postIds).order('position') : { data: [] };
+  const { data: assets, error: assetsError } = postIds.length ? await client.from('assets').select('id, post_id, filename, size_bytes, mime_type, thumbnail_path, original_path, position').in('post_id', postIds).order('position') : { data: [], error: null };
+  if (assetsError) return json({ error: '파일 목록을 불러오지 못했습니다.' }, 500);
 
-  const allPaths = [...new Set((assets ?? []).flatMap((asset) => [asset.thumbnail_path, asset.original_path].filter((path) => path && !path.startsWith('s3:')) as string[]))];
-  const { data: signed } = await client.storage.from('sns-assets').createSignedUrls(allPaths, 60 * 60);
+  const allPaths = [...new Set((assets ?? []).flatMap((asset) => [asset.thumbnail_path, asset.original_path].filter((path) => path && !isExternalMediaPath(path)) as string[]))];
+  const { data: signed, error: signedError } = allPaths.length ? await client.storage.from('sns-assets').createSignedUrls(allPaths, 60 * 60) : { data: [], error: null };
+  if (signedError) return json({ error: '파일 링크를 준비하지 못했습니다.' }, 503);
   const signedMap = new Map((signed ?? []).map((item) => [item.path, item.signedUrl]));
-  // Keep the trusted Supabase host in originalUrl so existing extensions accept AWS-backed files.
+  // Keep the trusted Supabase host so installed extensions accept R2/AWS-backed files.
   const awsUrls = new Map<string,string>();
   for (const asset of assets ?? []) {
-    if (asset.original_path.startsWith('s3:')) awsUrls.set(`${asset.id}:original`,await compatibilityMediaUrl(supabaseUrl,serviceRoleKey,asset.id,'original'));
-    if (asset.thumbnail_path.startsWith('s3:')) awsUrls.set(`${asset.id}:thumb`,await compatibilityMediaUrl(supabaseUrl,serviceRoleKey,asset.id,'thumb'));
+    if (isExternalMediaPath(asset.original_path)) awsUrls.set(`${asset.id}:original`,await compatibilityMediaUrl(supabaseUrl,serviceRoleKey,asset.id,'original'));
+    if (isExternalMediaPath(asset.thumbnail_path)) awsUrls.set(`${asset.id}:thumb`,await compatibilityMediaUrl(supabaseUrl,serviceRoleKey,asset.id,'thumb'));
   }
 
   return json({

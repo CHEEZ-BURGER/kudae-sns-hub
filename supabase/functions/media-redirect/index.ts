@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { cloudFrontMediaUrl, mediaSignature } from '../_shared/aws-media.ts';
+import { mediaSignature } from '../_shared/aws-media.ts';
+import { externalMediaUrl } from '../_shared/external-media.ts';
+import { isExternalMediaPath } from '../_shared/media-paths.ts';
 
 const cors={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Methods':'GET, HEAD, OPTIONS','Access-Control-Allow-Headers':'range, content-type'};
 const error=(message:string,status:number)=>new Response(JSON.stringify({error:message}),{status,headers:{...cors,'Content-Type':'application/json','Cache-Control':'no-store'}});
@@ -27,8 +29,8 @@ Deno.serve(async(request)=>{
     if(publicationError)throw publicationError;
     if(publication.status!=='published'||(publication.expires_at&&new Date(publication.expires_at).getTime()<Date.now()))return error('만료된 배포입니다.',410);
     const path=kind==='original'?asset.original_path:asset.thumbnail_path;
-    if(!path.startsWith('s3:'))return error('AWS 파일이 아닙니다.',404);
+    if(!path || !isExternalMediaPath(path))return error('외부 저장소 파일이 아닙니다.',404);
     // Return only a redirect. Image/video bytes must never pass through Supabase.
-    return new Response(null,{status:302,headers:{...cors,Location:cloudFrontMediaUrl(path),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
+    return new Response(null,{status:302,headers:{...cors,Location:await externalMediaUrl(path),'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
   }catch(err){console.error('Media redirect failed',err);return error('원본을 불러오지 못했습니다.',503);}
 });
