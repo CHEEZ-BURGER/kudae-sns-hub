@@ -9,11 +9,15 @@ function setup(html:string) {
   Object.defineProperty(window.HTMLElement.prototype,'getClientRects',{configurable:true,value:()=>[{width:100,height:40}]});
   const context:Record<string,unknown>={document:window.document,setTimeout,clearTimeout,URL};
   for(const file of ['shared/constants.js','shared/validators.js','content/text-input.js']) runInNewContext(readFileSync(new URL(`../../extension/${file}`,import.meta.url),'utf8'),context);
-  const api=context.KudaeSNS as {fillText:(target:string,content:object,signal:AbortSignal,progress:()=>void)=>Promise<boolean>;findTextFields:(target:string,mode:string)=>{title:any;body:any}|null;writeTextField:(el:any,text:string,signal:AbortSignal)=>Promise<void>};
+  const api=context.KudaeSNS as {fillText:(target:string,content:object,signal:AbortSignal,progress:()=>void)=>Promise<boolean>;findTextFields:(target:string,mode:string)=>{title:any;body:any}|null;writeTextField:(el:any,text:string,signal:AbortSignal)=>Promise<void>;readTextField:(el:HappyElement)=>string};
   const signal=new AbortController().signal;
   return {window,api,signal};
 }
 const content={contentMode:'separate',title:'[고대신문 보도] 제목',body:'첫 문단\n\n기사 링크\n크레딧',caption:'[보도] 제목\n\n첫 문단'};
+function renderedText(window:Window, editor:HappyElement) {
+  const setter=Object.getOwnPropertyDescriptor(window.HTMLElement.prototype,'innerText')!.set!;
+  Object.defineProperty(editor,'innerText',{get:()=>[...editor.childNodes].map(node=>node.nodeName==='BR'?'\n':node.textContent).join(''),set:(text:string)=>setter.call(editor,text)});
+}
 describe('SNS 표준 DOM 제목·본문 입력',()=>{
   it('고파스 subject/content 입력칸에 네이티브 값과 이벤트를 전달한다',async()=>{
     const {window,api,signal}=setup('<form><input name="subject"><textarea name="content"></textarea><input type="file" multiple></form>');
@@ -78,5 +82,63 @@ describe('SNS 표준 DOM 제목·본문 입력',()=>{
     const body=window.document.querySelector('textarea')!;
     body.addEventListener('input',()=>{body.value='';});
     await expect(api.fillText('koreapas',content,signal,()=>{})).rejects.toMatchObject({code:'TEXT_INSERT_FAILED'});
+  });
+  it('브라우저가 이미 보낸 input을 본문 전체 data로 다시 보내지 않는다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" role="textbox"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;renderedText(window,editor);
+    let inputs=0;
+    editor.addEventListener('input',(event)=>{inputs++;if(inputs>1)editor.innerText+=String((event as any).data||'');});
+    (window.document as any).execCommand=(_command:string,_show:boolean,text:string)=>{editor.innerText=text;editor.dispatchEvent(new window.InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));return true;};
+    await api.writeTextField(editor,content.caption,signal);
+    expect(inputs).toBe(1);expect(editor.innerText).toBe(content.caption);
+  });
+  it('Lexical 편집기에는 줄바꿈을 보존하는 plain-text paste 한 번만 보낸다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" data-lexical-editor="true" role="textbox"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;renderedText(window,editor);
+    const native=vi.fn(()=>true);(window.document as any).execCommand=native;
+    let pastes=0;let inputs=0;
+    editor.addEventListener('paste',(event)=>{event.preventDefault();pastes++;editor.innerText=(event as any).clipboardData.getData('text/plain');});
+    editor.addEventListener('input',()=>inputs++);
+    await api.writeTextField(editor,content.caption,signal);await api.writeTextField(editor,content.caption,signal);
+    expect(pastes).toBe(1);expect(inputs).toBe(0);expect(native).not.toHaveBeenCalled();expect(editor.innerText).toBe(content.caption);
+  });
+  it('Lexical 줄바꿈용 HTML에는 이스케이프한 원고 텍스트와 BR만 전달한다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" data-lexical-editor="true" role="textbox"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;
+    const text='제목 <script>alert("bad")</script>\n\n본문 & 링크\n크레딧';
+    let html='';
+    editor.addEventListener('paste',(event)=>{
+      event.preventDefault();html=(event as any).clipboardData.getData('text/html');editor.innerHTML=html;
+    });
+    await api.writeTextField(editor,text,signal);
+    expect(api.readTextField(editor)).toBe(text);expect(editor.querySelector('script')).toBeNull();
+    expect(html).toContain('&lt;script&gt;');expect(html).toContain('&amp;');
+    expect([...editor.querySelectorAll('*')].map(node=>node.tagName)).toEqual(['P','BR','BR','BR']);
+  });
+  it('Lexical이 줄마다 P 요소를 만들더라도 레이아웃 줄간격 대신 실제 줄바꿈으로 재확인한다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" data-lexical-editor="true" role="textbox"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;
+    editor.addEventListener('paste',(event)=>{
+      event.preventDefault();const text=(event as any).clipboardData.getData('text/plain');
+      for(const line of text.split('\n')){const p=window.document.createElement('p');p.textContent=line;if(!line)p.append(window.document.createElement('br'));editor.append(p);}
+    });
+    await api.writeTextField(editor,content.caption,signal);await api.writeTextField(editor,content.caption,signal);
+    expect(api.readTextField(editor)).toBe(content.caption);
+    expect(editor.querySelectorAll('p').length).toBe(content.caption.split('\n').length);
+  });
+  it('붙여넣기를 받지 않는 Lexical 편집기의 DOM을 직접 덮어쓰지 않는다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" data-lexical-editor="true" role="textbox"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;
+    const native=vi.fn(()=>false);(window.document as any).execCommand=native;
+    await expect(api.writeTextField(editor,content.caption,signal)).rejects.toMatchObject({code:'TEXT_INSERT_FAILED'});
+    expect(editor.textContent).toBe('');expect(native).not.toHaveBeenCalled();
+  });
+  it('input이 없는 네이티브 편집 명령에는 text data 없는 변경 알림만 보낸다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" role="textbox"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;renderedText(window,editor);
+    const data:unknown[]=[];editor.addEventListener('input',event=>data.push((event as any).data));
+    (window.document as any).execCommand=(_command:string,_show:boolean,text:string)=>{editor.innerText=text;return true;};
+    await api.writeTextField(editor,content.caption,signal);
+    expect(data).toEqual([undefined]);expect(editor.innerText).toBe(content.caption);
   });
 });

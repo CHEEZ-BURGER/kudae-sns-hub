@@ -9,7 +9,7 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.3.0');
+    expect(manifest.version).toBe('2.3.1');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);

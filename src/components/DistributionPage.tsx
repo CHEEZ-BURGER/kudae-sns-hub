@@ -9,7 +9,7 @@ import { formatBytes } from '../lib/workflow';
 import { buildSNSJob, desktopChromeMajor, isExtensionEvent, postExtensionMessage, type ExtensionUploadState, type SNSTarget } from '../lib/extension-bridge';
 import { nextPostAfterTransfer } from '../../extension/shared/upload-content.mjs';
 
-const expectedExtensionVersion = '2.3.0';
+const expectedExtensionVersion = '2.3.1';
 
 export function DistributionPage({ token }: { token: string }) {
   const [data, setData] = useState<Distribution | null>(null);
@@ -172,9 +172,9 @@ function ReporterPost({ post,index,total,notify,onBusy,onTransferred }: Reporter
 function InstagramTransfer({status,chromeMajor,upload,onStart,onCancel}:{status:'checking'|'available'|'outdated'|'unavailable'|'unsupported';chromeMajor:number|null;upload:{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number};onStart:(target:SNSTarget,studio?:boolean)=>void;onCancel:()=>void}) {
   const busy=Boolean(upload.jobId)&&!['COMPLETE','ERROR','CANCELLED'].includes(upload.state);
   const progress=upload.total?Math.round((upload.current/upload.total)*100):upload.state==='OPENING_TARGET'?12:upload.state==='INJECTING'?80:upload.state==='VERIFYING'?92:8;
-  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.3.0`;
+  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.3.1`;
   if(status==='unsupported')return <section className="instagram-transfer mobile-fallback mt-4"><Plug/><div><b>이미지 + 글 자동 넣기는 PC Chrome 전용</b><span>{chromeMajor&&chromeMajor<148?`Chrome ${chromeMajor}에서는 사용할 수 없습니다. 148 이상으로 업데이트해 주세요.`:'모바일에서는 제목·본문 복사와 원본 저장을 사용하세요. 자동 입력·다음 글 이동은 PC 확장 전용입니다.'}</span></div></section>;
-  if(status==='outdated')return <section className="instagram-transfer mt-4"><div className="extension-install"><div><b>한 번에 입력하려면 확장 업데이트가 필요합니다.</b><span>2.3.0 ZIP으로 기존 폴더를 교체하고 확장 관리 화면에서 새로고침한 뒤 SNS 탭도 새로고침해 주세요.</span></div><a className="button primary" href={zipUrl} download><Download/>2.3.0 받기</a></div></section>;
+  if(status==='outdated')return <section className="instagram-transfer mt-4"><div className="extension-install"><div><b>한 번에 입력하려면 확장 업데이트가 필요합니다.</b><span>2.3.1 ZIP으로 기존 폴더를 교체하고 확장 관리 화면에서 새로고침한 뒤 SNS 탭도 새로고침해 주세요.</span></div><a className="button primary" href={zipUrl} download><Download/>2.3.1 받기</a></div></section>;
   return <section className={`instagram-transfer mt-4 ${upload.state.toLowerCase()}`} aria-label="Instagram 자동 이미지 전달">
     <div className="instagram-transfer-head"><Plug/><div><b>이미지 + 글 한 번에 넣기</b><span>성공하면 다음 글로 이동합니다. 실제 게시 버튼은 직접 눌러 주세요.</span></div>{status==='available'?<em><ShieldCheck/>확장 연결됨</em>:<em className="muted"><Plug/>{status==='checking'?'확인 중':'설치 필요'}</em>}</div>
     {status==='available'?<div className="instagram-transfer-action">

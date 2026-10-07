@@ -1,7 +1,7 @@
 (() => {
   const api = globalThis.KudaeSNS;
   const SITE_RULES = {
-    facebook: { hosts: ['facebook.com', 'web.facebook.com'], button: /사진\/?동영상|photo\/?video|add photos|사진 추가/i, kind: 'image' },
+    facebook: { hosts: ['facebook.com', 'web.facebook.com'], button: /사진\s*(?:또는|\/)?\s*동영상|photo\s*(?:or|\/)?\s*video|add photos|사진 추가/i, kind: 'image' },
     koreapas: { hosts: ['koreapas.com'], button: /사진|이미지|첨부|파일 선택|파일 첨부|업로드/i, kind: 'image' },
     everytime: { hosts: ['everytime.kr'], button: /사진|이미지|첨부|파일 선택|파일 첨부|업로드/i, kind: 'image' },
     x: { hosts: ['x.com', 'twitter.com'], button: /미디어|사진이나 동영상 추가|add photos or video|media/i, kind: 'image' },
@@ -12,20 +12,22 @@
   const target = Object.entries(SITE_RULES).find(([, rule]) => rule.hosts.includes(hostname))?.[0] || null;
   if (!target) return;
   const rule = SITE_RULES[target];
-  let port; let overlay; let controller; let currentJobId = ''; let files = []; let total = 0; let finished = false; let content = null;
+  let port; let overlay; let controller; let currentJobId = ''; let files = []; let total = 0; let finished = false; let running = false; let content = null;
 
   const labelOf = (element) => [element.getAttribute('aria-label'), element.getAttribute('title'), element.textContent]
     .filter(Boolean).join(' ').trim().replace(/\s+/g, ' ');
 
   function findUploadInput() {
     const expected = target === 'youtube' && files[0]?.type?.startsWith('video/') ? 'video' : rule.kind;
-    const fields = content?.contentMode ? api.findTextFields(target,content.contentMode) : null;
+    const fields = content?.contentMode || target === 'facebook' ? api.findTextFields(target,content?.contentMode || 'caption') : null;
     const form = fields?.title?.closest('form') || fields?.body?.closest('form');
+    const composer = target === 'facebook' ? (fields?.body?.closest('[role="dialog"]') || form) : null;
+    if (target === 'facebook' && !composer) return null;
     const candidates = [...document.querySelectorAll('input[type="file"]')].filter((input) => {
       const accept=(input.getAttribute('accept')||'').toLowerCase();
       const compatible = !accept || accept.includes('*/*') || accept.includes(expected) ||
         (expected==='image' ? /\.(png|jpe?g|webp|gif)/.test(accept) : /\.(mp4|webm|mov|m4v)/.test(accept));
-      return compatible && !input.disabled && (!form || !['koreapas','everytime'].includes(target) || form.contains(input));
+      return compatible && !input.disabled && (!composer || composer.contains(input)) && (!form || !['koreapas','everytime'].includes(target) || form.contains(input));
     });
     return candidates.map((input, index) => {
       const accept = (input.getAttribute('accept') || '').toLowerCase();
@@ -40,7 +42,10 @@
 
   async function prepareComposer() {
     if (findUploadInput()) return;
-    const action = [...document.querySelectorAll('button,[role="button"],label,a')].find((element) => rule.button.test(labelOf(element)));
+    const fields = target === 'facebook' ? api.findTextFields(target, content?.contentMode || 'caption') : null;
+    const root = target === 'facebook' ? (fields?.body?.closest('[role="dialog"]') || fields?.body?.closest('form')) : document;
+    if (!root) throw api.extensionError('TEXT_INPUT_NOT_FOUND', '페이스북 게시물 작성창을 먼저 열어 주세요.');
+    const action = [...root.querySelectorAll('button,[role="button"],label,a')].find((element) => rule.button.test(labelOf(element)));
     action?.click();
     if (action) await new Promise((resolve) => setTimeout(resolve, 500));
   }
@@ -64,15 +69,56 @@
       const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
       if (descriptor?.set) descriptor.set.call(input, transfer.files); else input.files = transfer.files;
     } catch (error) { throw api.extensionError('FILE_ASSIGN_FAILED', `${api.TARGET_LABELS[target]}에 파일을 넣지 못했습니다.`, String(error)); }
+    if (input.files?.length !== files.length) throw api.extensionError('FILE_ASSIGN_FAILED', '전달된 파일 수가 맞지 않습니다.', `Expected ${files.length}, received ${input.files?.length || 0}`);
+    // React may reset the picker after consuming its files. Check assignment
+    // before notifying the site, then verify its attachment previews separately.
     input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
     input.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-    if (input.files?.length !== files.length) throw api.extensionError('FILE_ASSIGN_FAILED', '전달된 파일 수가 맞지 않습니다.', `Expected ${files.length}, received ${input.files?.length || 0}`);
   }
 
-  async function verifyInjection(input) {
-    if (input.files?.length !== files.length) return false;
+  function previewSources(root) {
+    const sources = new Set();
+    for (const media of root.querySelectorAll('img,video')) {
+      if (/프로필|profile|avatar/i.test(media.getAttribute('alt') || '')) continue;
+      const view = media.ownerDocument.defaultView;
+      const rects = media.getClientRects();
+      if (!rects.length || view.getComputedStyle(media).visibility === 'hidden' || view.getComputedStyle(media).display === 'none') continue;
+      // Facebook adds PNG action icons along with the attachment controls.
+      // Those must never be counted as uploaded photos. Tiny originals still
+      // qualify when Facebook labels the attachment with its actual filename.
+      const namedAttachment = files.some((file) => file?.name === media.getAttribute('alt'));
+      if (!namedAttachment && Math.max(media.naturalWidth || 0, media.naturalHeight || 0, rects[0].width, rects[0].height) <= 64) continue;
+      const source = media.currentSrc || media.getAttribute('src') || media.getAttribute('poster');
+      if (source && !/^data:image\/svg\+xml/i.test(source)) sources.add(source);
+    }
+    return sources;
+  }
+
+  function mediaReceipt(input) {
     const root = input.closest('[role="dialog"],form') || document.body;
-    const before = root.childElementCount;
+    return { root, sources: target === 'facebook' ? previewSources(root) : new Set(), before: root.childElementCount };
+  }
+
+  async function verifyInjection(input, receipt) {
+    const signal = controller.signal;
+    if (target === 'facebook') {
+      // A populated FileList is not Facebook acknowledgement. Require distinct
+      // attachment previews instead, excluding old images and duplicate mirrors.
+      const accepted = () => {
+        const fields = api.findTextFields(target, content?.contentMode || 'caption');
+        const root = fields?.body?.closest('[role="dialog"]') || fields?.body?.closest('form') || receipt.root;
+        const fresh = [...previewSources(root)].filter((source) => !receipt.sources.has(source));
+        return fresh.length >= files.length;
+      };
+      if (accepted()) return true;
+      try { return Boolean(await api.waitForMutation(accepted, 30_000, signal)); }
+      catch (error) {
+        if (error?.name === 'AbortError' || signal.aborted) throw api.extensionError('USER_CANCELLED', '작업을 취소했습니다.');
+        return false;
+      }
+    }
+    if (input.files?.length !== files.length) return false;
+    const { root, before } = receipt;
     return new Promise((resolve) => {
       let reacted = false;
       const observer = new MutationObserver(() => {
@@ -80,46 +126,57 @@
       });
       const timeout = setTimeout(() => { cleanup(); resolve(reacted || input.files?.length === files.length); }, 10_000);
       const onAbort = () => { cleanup(); resolve(false); };
-      const cleanup = () => { clearTimeout(timeout); observer.disconnect(); controller.signal.removeEventListener('abort', onAbort); };
+      const cleanup = () => { clearTimeout(timeout); observer.disconnect(); signal.removeEventListener('abort', onAbort); };
       observer.observe(root, { childList: true, subtree: true, attributes: true });
-      controller.signal.addEventListener('abort', onAbort, { once: true });
+      signal.addEventListener('abort', onAbort, { once: true });
     });
   }
 
-  function clearMemory() { files.length = 0; files = []; controller = null; }
+  function clearMemory() { files.length = 0; files = []; controller = null; running = false; }
   function progress(state, userMessage, extra = {}) {
     overlay?.update(userMessage, state.includes('WAITING') ? '창이 열리면 자동으로 계속합니다.' : '', extra.current || 0, extra.total || 0);
     port?.postMessage({ type: 'TARGET_PROGRESS', jobId: currentJobId, state, userMessage, extra });
   }
   function cancelOrClose() {
     if (finished) { overlay?.remove(); overlay = null; return; }
-    controller?.abort(); port?.postMessage({ type: 'TARGET_CANCEL', jobId: currentJobId }); clearMemory(); overlay?.remove(); overlay = null;
+    finished = true; controller?.abort(); port?.postMessage({ type: 'TARGET_CANCEL', jobId: currentJobId }); clearMemory(); overlay?.remove(); overlay = null;
   }
   async function finishJob() {
     controller = new AbortController(); overlay ||= new api.StatusOverlay(cancelOrClose);
+    const signal = controller.signal;
+    const jobId = currentJobId;
+    const assertActive = () => {
+      if (signal.aborted || currentJobId !== jobId) throw api.extensionError('USER_CANCELLED', '작업을 취소했습니다.');
+    };
     try {
       await prepareComposer();
+      assertActive();
       let input = await waitForUploadInput();
-      const textAfterFiles = target === 'youtube';
-      let contentInserted = textAfterFiles ? false : await api.fillText(target, content, controller.signal, progress);
+      assertActive();
+      const textAfterFiles = target === 'youtube' || target === 'facebook';
+      if (target === 'facebook') api.assertContentWritable(target, content);
+      let contentInserted = textAfterFiles ? false : await api.fillText(target, content, signal, progress);
       input = findUploadInput() || await waitForUploadInput();
+      assertActive();
+      const receipt = mediaReceipt(input);
       progress(api.STATES.INJECTING, `원본 ${files.length}개를 넣는 중입니다.`);
       await injectFiles(input);
       progress(api.STATES.VERIFYING, `${api.TARGET_LABELS[target]}가 파일을 받았는지 확인 중입니다.`);
-      if (!await verifyInjection(input)) throw api.extensionError('COMPOSER_DID_NOT_REACT', '파일은 전달했지만 작성 화면이 반응하지 않았습니다.', '패널의 순차 복사를 사용해 주세요.');
+      if (!await verifyInjection(input, receipt)) throw api.extensionError('COMPOSER_DID_NOT_REACT', 'SNS에서 사진·영상 미리보기를 확인하지 못했습니다. 글은 새로 입력하지 않고 현재 글을 유지합니다.', '작성창의 사진 첨부 상태를 확인한 뒤 다시 시도하거나 원본 다운로드를 사용해 주세요.');
       if (textAfterFiles) {
         const afterContent = { ...content, replaceableTitle: files[0]?.name.replace(/\.[^.]+$/,'') };
-        contentInserted = await api.fillText(target, afterContent, controller.signal, progress);
-      } else if (contentInserted) await api.fillText(target, content, controller.signal, progress);
+        contentInserted = await api.fillText(target, afterContent, signal, progress);
+      } else if (contentInserted) await api.fillText(target, content, signal, progress);
+      if (signal.aborted || currentJobId !== jobId) return;
       const count = files.length; finished = true;
       const message = contentInserted ? `원본 ${count}개 + 글 입력 완료` : `원본 ${count}개 전달 완료`;
       overlay.complete(message, '내용을 확인한 뒤 최종 게시 버튼은 직접 눌러 주세요.');
-      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count, contentInserted, userMessage: message }); clearMemory();
+      port.postMessage({ type: 'TARGET_COMPLETE', jobId, count, contentInserted, userMessage: message }); clearMemory();
     } catch (error) {
-      if (error?.code === 'USER_CANCELLED') return;
+      if (error?.code === 'USER_CANCELLED' || signal.aborted || currentJobId !== jobId) return;
       const normalized = error?.code ? error : api.extensionError('FILE_ASSIGN_FAILED', 'SNS에 파일을 전달하지 못했습니다.', String(error));
       finished = true; overlay?.error(normalized.userMessage, normalized.detail || '패널의 순차 복사를 사용해 주세요.');
-      port?.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: normalized }); clearMemory();
+      port?.postMessage({ type: 'TARGET_ERROR', jobId, error: normalized }); clearMemory();
     }
   }
 
@@ -128,6 +185,7 @@
     if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY', feature:'one-click-v1' }); return; }
     if (message?.type === 'JOB_START') {
       if (message.target && message.target !== target) return;
+      if (currentJobId && !finished) return;
       currentJobId = message.jobId; total = message.total; files = new Array(total); finished = false;
       content = message;
       overlay?.remove(); overlay = new api.StatusOverlay(cancelOrClose); overlay.update(`원본 받는 중 0/${total}`, '', 0, total); return;
@@ -136,11 +194,11 @@
       if (!(message.file instanceof File) || message.index < 0 || message.index >= total) { port.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: api.extensionError('INVALID_JOB', '전달받은 파일이 올바르지 않습니다.') }); return; }
       files[message.index] = message.file; const received = files.filter(Boolean).length; overlay.update(`원본 받는 중 ${received}/${total}`, '', received, total); return;
     }
-    if (message?.type === 'JOB_END' && message.jobId === currentJobId && !finished) {
+    if (message?.type === 'JOB_END' && message.jobId === currentJobId && !finished && !running) {
       if (files.length !== total || Array.from(files).some((file) => !(file instanceof File))) { port.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: api.extensionError('INVALID_JOB', '일부 파일이 전달되지 않았습니다.') }); return; }
-      void finishJob(); return;
+      running = true; void finishJob(); return;
     }
     if (message?.type === 'JOB_CANCEL' && message.jobId === currentJobId) cancelOrClose();
-    if (message?.type === 'JOB_ERROR' && message.jobId === currentJobId) { finished = true; overlay?.error(message.error.userMessage, message.error.detail || '배포 패널에서 다시 시도해 주세요.'); clearMemory(); }
+    if (message?.type === 'JOB_ERROR' && message.jobId === currentJobId) { finished = true; controller?.abort(); overlay?.error(message.error.userMessage, message.error.detail || '배포 패널에서 다시 시도해 주세요.'); clearMemory(); }
   });
 })();

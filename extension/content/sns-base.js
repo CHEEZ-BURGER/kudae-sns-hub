@@ -12,6 +12,7 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
 
   function waitForMutation(test, timeoutMs, signal) {
     return new Promise((resolve, reject) => {
+      if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
       const initial = test();
       if (initial) { resolve(initial); return; }
       const observer = new MutationObserver(() => {
@@ -26,7 +27,7 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
         observer.disconnect();
         signal?.removeEventListener('abort', onAbort);
       };
-      observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['accept', 'multiple', 'role', 'aria-label'] });
+      observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['accept', 'multiple', 'role', 'aria-label', 'src', 'srcset', 'poster', 'style', 'class'] });
       signal?.addEventListener('abort', onAbort, { once: true });
     });
   }
