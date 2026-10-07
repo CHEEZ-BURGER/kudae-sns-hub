@@ -1,0 +1,82 @@
+import { readFileSync } from 'node:fs';
+import { runInNewContext } from 'node:vm';
+import { Window, type HTMLElement as HappyElement } from 'happy-dom';
+import { describe, expect, it, vi } from 'vitest';
+
+function setup(html:string) {
+  const window=new Window({url:'https://www.koreapas.com/bbs/write.php'});
+  window.document.body.innerHTML=html;
+  Object.defineProperty(window.HTMLElement.prototype,'getClientRects',{configurable:true,value:()=>[{width:100,height:40}]});
+  const context:Record<string,unknown>={document:window.document,setTimeout,clearTimeout,URL};
+  for(const file of ['shared/constants.js','shared/validators.js','content/text-input.js']) runInNewContext(readFileSync(new URL(`../../extension/${file}`,import.meta.url),'utf8'),context);
+  const api=context.KudaeSNS as {fillText:(target:string,content:object,signal:AbortSignal,progress:()=>void)=>Promise<boolean>;findTextFields:(target:string,mode:string)=>{title:any;body:any}|null;writeTextField:(el:any,text:string,signal:AbortSignal)=>Promise<void>};
+  const signal=new AbortController().signal;
+  return {window,api,signal};
+}
+const content={contentMode:'separate',title:'[고대신문 보도] 제목',body:'첫 문단\n\n기사 링크\n크레딧',caption:'[보도] 제목\n\n첫 문단'};
+describe('SNS 표준 DOM 제목·본문 입력',()=>{
+  it('고파스 subject/content 입력칸에 네이티브 값과 이벤트를 전달한다',async()=>{
+    const {window,api,signal}=setup('<form><input name="subject"><textarea name="content"></textarea><input type="file" multiple></form>');
+    const title=window.document.querySelector('input')!; const body=window.document.querySelector('textarea')!;
+    const changed=vi.fn();body.addEventListener('input',changed);
+    expect(await api.fillText('koreapas',content,signal,()=>{})).toBe(true);
+    expect(title.value).toBe(content.title);expect(body.value).toBe(content.body);expect(changed).toHaveBeenCalledOnce();
+  });
+  it('에타 제목과 본문을 분리한다',async()=>{
+    const {window,api,signal}=setup('<form><input name="title" placeholder="제목"><textarea name="text" placeholder="내용"></textarea></form>');
+    await api.fillText('everytime',content,signal,()=>{});
+    expect(window.document.querySelector('input')!.value).toBe(content.title);
+    expect(window.document.querySelector('textarea')!.value).toBe(content.body);
+  });
+  it('Facebook 댓글칸이 아니라 작성 대화상자의 본문을 찾는다',()=>{
+    const {window,api}=setup('<textarea aria-label="Write a comment"></textarea><div role="dialog"><div contenteditable="true" role="textbox" aria-label="What is on your mind?"></div></div>');
+    expect(api.findTextFields('facebook','caption')?.body).toBe(window.document.querySelector('[role="textbox"]'));
+  });
+  it('작성창이 없을 때 검색·댓글·임의 텍스트를 대신 채우지 않는다',()=>{
+    const {api}=setup('<input placeholder="검색"><textarea aria-label="Write a comment"></textarea><textarea></textarea>');
+    expect(api.findTextFields('facebook','caption')).toBeNull();
+  });
+  it('기존 글을 덮어쓰지 않고 제목도 먼저 변경하지 않는다',async()=>{
+    const {window,api,signal}=setup('<form><input name="subject"><textarea name="content">이미 작성한 글</textarea></form>');
+    await expect(api.fillText('koreapas',content,signal,()=>{})).rejects.toMatchObject({code:'TEXT_NOT_EMPTY'});
+    expect(window.document.querySelector('input')!.value).toBe('');
+    expect(window.document.querySelector('textarea')!.value).toBe('이미 작성한 글');
+  });
+  it('같은 글 재확인은 중복 삽입하지 않는다',async()=>{
+    const {window,api,signal}=setup('<form><input name="subject"><textarea name="content"></textarea></form>');
+    await api.fillText('koreapas',content,signal,()=>{});await api.fillText('koreapas',content,signal,()=>{});
+    expect(window.document.querySelector('textarea')!.value).toBe(content.body);
+  });
+  it('네이티브 글자 수 제한을 넘으면 자르지 않고 거절한다',async()=>{
+    const {api,signal}=setup('<form><input name="subject"><textarea name="content" maxlength="2"></textarea></form>');
+    await expect(api.fillText('koreapas',content,signal,()=>{})).rejects.toMatchObject({code:'TEXT_TOO_LONG'});
+  });
+  it('취소한 작업은 입력하지 않는다',async()=>{
+    const {window,api}=setup('<form><input name="subject"><textarea name="content"></textarea></form>');
+    const controller=new AbortController();controller.abort();
+    await expect(api.fillText('koreapas',content,controller.signal,()=>{})).rejects.toMatchObject({code:'USER_CANCELLED'});
+    expect(window.document.querySelector('input')!.value).toBe('');
+  });
+  it('YouTube Studio 제목과 설명 편집기를 구분한다',()=>{
+    const {window,api}=setup('<div role="dialog"><div id="title-textarea"><div id="textbox" contenteditable="true"></div></div><div id="description-textarea"><div id="textbox" contenteditable="true"></div></div></div>');
+    const fields=api.findTextFields('youtube','separate');
+    expect(fields?.title).toBe(window.document.querySelector('#title-textarea #textbox'));
+    expect(fields?.body).toBe(window.document.querySelector('#description-textarea #textbox'));
+  });
+  it('contenteditable에도 제목과 두 줄 띄운 본문을 일반 텍스트로 넣는다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" role="textbox" aria-label="What is on your mind?"></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[role="textbox"]')!;
+    // Happy DOM omits BRs from its innerText getter. Model the browser's rendered line breaks.
+    const nativeSetter=Object.getOwnPropertyDescriptor(window.HTMLElement.prototype,'innerText')!.set!;
+    Object.defineProperty(editor,'innerText',{get:()=>[...editor.childNodes].map(node=>node.nodeName==='BR'?'\n':node.textContent).join(''),set:(text:string)=>nativeSetter.call(editor,text)});
+    await api.fillText('facebook',{...content,contentMode:'caption'},signal,()=>{});
+    expect(editor.innerText).toBe(content.caption);
+    expect(editor.querySelector('script')).toBeNull();
+  });
+  it('프레임워크가 입력을 지우면 성공으로 보고하지 않는다',async()=>{
+    const {window,api,signal}=setup('<form><input name="subject"><textarea name="content"></textarea></form>');
+    const body=window.document.querySelector('textarea')!;
+    body.addEventListener('input',()=>{body.value='';});
+    await expect(api.fillText('koreapas',content,signal,()=>{})).rejects.toMatchObject({code:'TEXT_INSERT_FAILED'});
+  });
+});

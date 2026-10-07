@@ -1,10 +1,11 @@
 import { postBody } from '../shared/post-content.mjs';
+import { uploadContent, nextPostAfterTransfer } from '../shared/upload-content.mjs';
 
 (() => {
   const api = globalThis.KudaeSNS;
   const config = globalThis.KudaeSNSConfig || {};
   const el = (id) => document.getElementById(id);
-  const state = { link: '', data: null, activeIndex: 0, pasteIndex: 0, tab: null, platform: null, jobId: '', busy: false };
+  const state = { link: '', data: null, activeIndex: 0, pasteIndex: 0, tab: null, platform: null, jobId: '', busy: false, pending: null };
   const platformLabels = api.TARGET_LABELS;
   const extensionByMime = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'video/x-m4v': 'm4v' };
   function notify(message) {
@@ -46,6 +47,7 @@ import { postBody } from '../shared/post-content.mjs';
   }
 
   async function loadDistribution(link, quiet = false) {
+    if (state.busy) throw new Error('전달 중에는 배포 링크를 변경할 수 없습니다. 완료하거나 취소해 주세요.');
     const token = parseDistributionLink(link);
     if (!token) throw new Error('고대신문 배포 링크 형식이 아닙니다. 카카오톡 링크 전체를 붙여 넣어 주세요.');
     if (!config.supabaseUrl || !config.publishableKey) throw new Error('배포 연결 설정이 없는 개발용 ZIP입니다. 공개 페이지에서 최신 확장을 다시 받아 주세요.');
@@ -87,8 +89,8 @@ import { postBody } from '../shared/post-content.mjs';
     el('copy-next-image').textContent = imageAssets.length ? `${current + 1}번 복사` : '이미지 없음';
     el('paste-label').textContent = state.pasteIndex >= imageAssets.length && imageAssets.length ? '모든 이미지를 복사했습니다.' : '이미지 순차 복사';
     el('paste-help').textContent = imageAssets.length ? `${Math.min(state.pasteIndex, imageAssets.length)} / ${imageAssets.length} 완료 · 복사 후 SNS에서 Ctrl+V` : '이 글에는 복사할 이미지가 없습니다.';
-    el('previous-post').disabled = state.activeIndex === 0;
-    el('next-post').disabled = state.activeIndex >= posts.length - 1;
+    el('previous-post').disabled = state.busy || state.activeIndex === 0;
+    el('next-post').disabled = state.busy || state.activeIndex >= posts.length - 1;
     el('pager-text').textContent = `${state.activeIndex + 1} / ${posts.length}`;
     updateUploadButton();
   }
@@ -114,7 +116,10 @@ import { postBody } from '../shared/post-content.mjs';
     el('site-name').textContent = connected ? `${platformLabels[state.platform]} 탭 감지됨` : '지원 SNS를 열어 주세요';
     el('site-help').textContent = connected ? '작성창의 사진·파일 첨부 영역으로 원본을 전달합니다.' : 'Facebook · 고파스 · Instagram · YouTube · X · 에타';
     if (connected && tab?.id && tab.status === 'complete') {
-      try { await chrome.tabs.sendMessage(tab.id, { type: 'KUDAE_CONTEXT_PING' }); }
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, { type: 'KUDAE_CONTEXT_PING' });
+        if (response?.feature !== 'one-click-v1') showRefreshGate(`${platformLabels[state.platform]} 탭에 이미지 + 글 자동 입력 기능을 적용해야 합니다.`);
+      }
       catch { showRefreshGate(`${platformLabels[state.platform]} 탭에 최신 연결 기능을 적용해야 합니다.`); }
     }
     updateUploadButton();
@@ -124,10 +129,10 @@ import { postBody } from '../shared/post-content.mjs';
     const post = state.data?.posts[state.activeIndex]; if (!post || !state.platform) return [];
     if (state.platform === 'youtube') {
       const studio = (() => { try { return new URL(state.tab?.url || '').hostname === 'studio.youtube.com'; } catch { return false; } })();
-      return studio ? videos(post).slice(0, 1) : images(post).slice(0, 10);
+      return studio ? videos(post) : images(post);
     }
     const source = images(post);
-    return state.platform === 'x' ? source.slice(0, 4) : source;
+    return source;
   }
 
   function updateUploadButton() {
@@ -136,8 +141,12 @@ import { postBody } from '../shared/post-content.mjs';
     button.disabled = state.busy || !state.platform || !count;
     if (!state.platform) button.textContent = '지원 SNS 탭을 먼저 열어 주세요';
     else if (!count) button.textContent = state.platform === 'youtube' && state.tab?.url?.includes('studio.youtube.com') ? '이 글에는 영상이 없습니다' : '이 글에는 이미지가 없습니다';
-    else if (state.platform === 'youtube') button.textContent = state.tab?.url?.includes('studio.youtube.com') ? `YouTube Studio에 영상 ${count}개 넣기` : `YouTube 게시물에 이미지 ${count}장 넣기`;
-    else button.textContent = `${platformLabels[state.platform]}에 원본 ${count}개 넣기${state.platform === 'x' && images(state.data.posts[state.activeIndex]).length > 4 ? ' (1–4번)' : ''}`;
+    else if (state.platform === 'youtube') button.textContent = state.tab?.url?.includes('studio.youtube.com') ? `YouTube Studio에 영상 ${count}개 + 제목·설명 넣기` : `YouTube 게시물에 이미지 ${count}장 + 글 넣기`;
+    else button.textContent = `${platformLabels[state.platform]} 전용 · 이미지 ${count}개 + ${['koreapas','everytime'].includes(state.platform)?'제목·본문':'글'} 넣기`;
+    document.querySelectorAll('[data-upload-target]').forEach((button) => { button.disabled = state.busy || !state.data; });
+    el('cancel-upload').hidden = !state.busy;
+    el('previous-post').disabled = state.busy || state.activeIndex === 0;
+    el('next-post').disabled = state.busy || state.activeIndex >= (state.data?.posts.length || 0) - 1;
   }
 
   async function copyText(text, message) {
@@ -166,21 +175,33 @@ import { postBody } from '../shared/post-content.mjs';
 
   function makeJob() {
     const assets = selectedAssets();
+    const post = state.data.posts[state.activeIndex];
+    if (assets.length !== post.assets.length) throw new Error('영상과 이미지가 섞여 있어 일부만 전달할 수 없습니다. 원본 다운로드를 이용해 주세요.');
+    const studio = state.platform === 'youtube' && state.tab?.url?.includes('studio.youtube.com');
     return {
-      jobId: crypto.randomUUID(), target: state.platform, createdAt: Date.now(), caption: '',
+      jobId: crypto.randomUUID(), target: state.platform, createdAt: Date.now(), ...uploadContent(post, state.platform, studio),
       assets: assets.map((asset, order) => { const mimeType = asset.mimeType.toLowerCase(); return { order, url: asset.originalUrl, filename: `${mimeType.startsWith('video/') ? 'video' : 'card'}-${String(order + 1).padStart(2, '0')}.${extensionByMime[mimeType]}`, mimeType }; }),
     };
   }
 
-  async function injectFiles() {
+  async function injectFiles(target, studio = false) {
+    if (state.busy) return;
+    if (target) {
+      const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+      const matches = tabs.filter((tab) => platformForUrl(tab.url) === target && (target !== 'youtube' || tab.url?.includes('studio.youtube.com') === studio));
+      const tab = matches.find((tab) => tab.active) || matches.at(-1);
+      if (!tab?.id) { notify(`${platformLabels[target]} 작성창을 먼저 열어 주세요.`); return; }
+      state.tab = tab; state.platform = target; await chrome.tabs.update(tab.id, { active: true });
+    }
     if (!state.tab?.id || !state.platform) return;
     try {
       const job = makeJob(); const checked = api.validateJob(job); if (!checked.ok) throw checked.error;
-      state.jobId = job.jobId; state.busy = true; updateUploadButton(); showUpload('SNS 작성창에 연결 중입니다.', '원본은 메모리에서만 준비됩니다.', 8);
+      state.jobId = job.jobId; state.pending = { jobId:job.jobId, index:state.activeIndex, postId:state.data.posts[state.activeIndex].id, count:job.assets.length };
+      state.busy = true; updateUploadButton(); showUpload('SNS 작성창에 연결 중입니다.', '이미지와 글을 함께 넣고 성공하면 다음 글로 이동합니다.', 8);
       const response = await chrome.runtime.sendMessage({ type: 'PANEL_UPLOAD_REQUEST', payload: checked.value, targetTabId: state.tab.id });
       if (!response?.accepted) throw response?.error || new Error('SNS 전달을 시작하지 못했습니다.');
     } catch (error) {
-      state.busy = false; updateUploadButton();
+      state.busy = false; state.pending = null; state.jobId = ''; updateUploadButton();
       const message = error?.userMessage || error?.message || 'SNS 전달을 시작하지 못했습니다.'; showUpload(message, error?.detail || '순차 복사를 사용해 주세요.', 0); notify(message);
       if (/새로고침|Extension context invalidated/u.test(`${message} ${error?.detail || ''}`)) showRefreshGate(message);
     }
@@ -191,6 +212,7 @@ import { postBody } from '../shared/post-content.mjs';
   }
 
   function movePost(delta) {
+    if (state.busy) return;
     const next = Math.max(0, Math.min(state.activeIndex + delta, state.data.posts.length - 1));
     if (next === state.activeIndex) return;
     state.activeIndex = next; state.pasteIndex = 0; void savePanelState(); render();
@@ -218,7 +240,15 @@ import { postBody } from '../shared/post-content.mjs';
   el('copy-body-only').addEventListener('click', () => copyText(postBody(state.data.posts[state.activeIndex]), '제목을 제외한 본문을 복사했습니다.').catch(() => notify('본문을 복사하지 못했습니다.')));
   el('copy-body').addEventListener('click', () => copyText(bodyWithTitle(state.data.posts[state.activeIndex]), '제목과 본문을 복사했습니다.').catch(() => notify('본문을 복사하지 못했습니다.')));
   el('copy-next-image').addEventListener('click', copyNextImage);
-  el('inject-files').addEventListener('click', injectFiles);
+  el('inject-files').addEventListener('click', () => void injectFiles());
+  document.querySelectorAll('[data-upload-target]').forEach((button) => button.addEventListener('click', () => {
+    void injectFiles(button.dataset.uploadTarget, button.dataset.studio === 'true').catch((error) => notify(error.message || 'SNS 연결에 실패했습니다.'));
+  }));
+  el('cancel-upload').addEventListener('click', () => {
+    const jobId=state.jobId; state.jobId='';state.pending=null;state.busy=false;updateUploadButton();
+    showUpload('전달을 취소했습니다. 현재 글을 유지합니다.', 'SNS에 이미 들어간 내용은 직접 확인해 주세요.', 0);
+    if(jobId) void chrome.runtime.sendMessage({type:'SNS_UPLOAD_CANCEL',jobId}).catch(()=>notify('취소 요청을 전달하지 못했습니다. SNS 작성창을 확인해 주세요.'));
+  });
   el('previous-post').addEventListener('click', () => movePost(-1));
   el('next-post').addEventListener('click', () => movePost(1));
 
@@ -232,8 +262,17 @@ import { postBody } from '../shared/post-content.mjs';
       showUpload(payload.userMessage || '진행 중입니다.', '최종 게시 버튼은 직접 눌러 주세요.', percent);
       if (/새로고침/u.test(payload.userMessage || '')) showRefreshGate(payload.userMessage);
     }
-    if (type === 'SNS_UPLOAD_COMPLETE') { state.busy = false; showUpload(payload.userMessage || '원본 전달 완료', '내용을 확인하고 게시 버튼을 직접 눌러 주세요.', 100); updateUploadButton(); notify('원본 전달을 마쳤습니다.'); }
-    if (type === 'SNS_UPLOAD_ERROR') { state.busy = false; showUpload(payload.userMessage || '전달하지 못했습니다.', '순차 복사를 사용해 주세요.', 0); updateUploadButton(); }
+    if (type === 'SNS_UPLOAD_COMPLETE') {
+      const next = nextPostAfterTransfer(state.activeIndex, state.data.posts.length, state.pending && { ...state.pending, currentPostId:state.data.posts[state.activeIndex].id }, { type,payload });
+      const complete = payload.contentInserted === true && payload.count === state.pending?.count && payload.postId === state.pending?.postId;
+      state.busy = false; state.pending = null; state.jobId = '';
+      if (complete) {
+        const moved = next !== state.activeIndex; state.activeIndex = next; state.pasteIndex = 0; void savePanelState(); render();
+        showUpload(payload.userMessage || '이미지 + 글 입력 완료', 'SNS 내용을 확인하고 최종 게시 버튼은 직접 눌러 주세요.', 100);
+        notify(moved ? '이미지와 글을 넣었습니다. 다음 글로 이동했습니다.' : '마지막 글까지 입력했습니다. SNS에서 최종 게시해 주세요.');
+      } else { showUpload('전달 결과를 확인하지 못했습니다.', '현재 글을 유지합니다. SNS 작성창을 확인해 주세요.', 0); updateUploadButton(); }
+    }
+    if (type === 'SNS_UPLOAD_ERROR') { state.busy = false; state.pending = null; state.jobId = ''; showUpload(payload.userMessage || '전달하지 못했습니다.', '현재 글을 유지합니다. 작성창을 확인한 뒤 다시 시도해 주세요.', 0); updateUploadButton(); }
   });
 
   void (async () => {

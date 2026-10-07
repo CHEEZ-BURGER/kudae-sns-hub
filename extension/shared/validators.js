@@ -41,6 +41,16 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
       if (!targetTypes.has(asset.mimeType)) return { ok: false, error: extensionError('UNSUPPORTED_MIME', `${index + 1}번 파일 형식은 ${api.TARGET_LABELS[input.target]} 자동 전달을 지원하지 않습니다.`, asset.mimeType, { assetIndex: index }) };
     }
 
+    if (input.contentMode !== undefined) {
+      if (!['caption', 'separate'].includes(input.contentMode) ||
+        (input.contentMode === 'separate' && !['koreapas', 'everytime', 'youtube'].includes(input.target)) ||
+        typeof input.title !== 'string' || !input.title.trim() || input.title.length > 500 ||
+        typeof input.body !== 'string' || input.body.length > 50000 ||
+        typeof input.caption !== 'string' || !input.caption.trim() || input.caption.length > 51000 ||
+        typeof input.postId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(input.postId)) {
+        return { ok: false, error: extensionError('INVALID_JOB', '자동 입력할 제목과 본문을 확인해 주세요.') };
+      }
+    }
     return { ok: true, value: { ...input, assets, caption: typeof input.caption === 'string' ? input.caption : '' } };
   }
 

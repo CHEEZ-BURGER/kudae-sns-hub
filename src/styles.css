@@ -238,3 +238,5 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .share-box { grid-template-columns: auto minmax(0,1fr); }
   .share-box button { grid-column: 1 / -1; }
 }
+.sns-one-click-buttons { display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%,15rem),1fr)); gap: .65rem; width: 100%; }
+.sns-one-click-buttons .button { white-space: normal; min-height: 2.75rem; }

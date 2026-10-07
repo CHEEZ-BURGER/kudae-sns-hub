@@ -6,9 +6,10 @@ import { copyImageToClipboard, downloadAsset, downloadAssetsIndividually, isVide
 import { loadDistribution } from '../lib/public-api';
 import { categorizedTitle, koreapasTitle, postBody, postBodyWithTitle, postContentParts } from '../lib/post-copy';
 import { formatBytes } from '../lib/workflow';
-import { buildInstagramJob, desktopChromeMajor, isExtensionEvent, postExtensionMessage, type ExtensionUploadState } from '../lib/extension-bridge';
+import { buildSNSJob, desktopChromeMajor, isExtensionEvent, postExtensionMessage, type ExtensionUploadState, type SNSTarget } from '../lib/extension-bridge';
+import { nextPostAfterTransfer } from '../../extension/shared/upload-content.mjs';
 
-const expectedExtensionVersion = '2.2.2';
+const expectedExtensionVersion = '2.3.0';
 
 export function DistributionPage({ token }: { token: string }) {
   const [data, setData] = useState<Distribution | null>(null);
@@ -16,6 +17,7 @@ export function DistributionPage({ token }: { token: string }) {
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
+  const [transferring, setTransferring] = useState(false);
   const cardStartRef = useRef<HTMLDivElement>(null);
 
   async function reload() {
@@ -29,7 +31,7 @@ export function DistributionPage({ token }: { token: string }) {
   useEffect(() => { setActiveIndex(0); }, [data?.id]);
   function notify(value: string) { setFeedback(value); }
   function movePost(nextIndex: number) {
-    if (!data) return;
+    if (!data || transferring) return;
     setActiveIndex(Math.max(0, Math.min(nextIndex, data.posts.length - 1)));
     setFeedback('');
     requestAnimationFrame(() => cardStartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -47,24 +49,26 @@ export function DistributionPage({ token }: { token: string }) {
       <header className="reporter-hero"><div><p className="eyebrow">{data.issueNumber} SNS 배포</p><h1 className="mt-2 text-3xl font-bold sm:text-4xl">{data.title}</h1><p className="mt-3 text-sm text-muted">게시물 {data.posts.length}개 · 이미지 {imageCount}장 · 영상 {videoCount}개 · {new Date(data.publishedAt).toLocaleDateString('ko-KR')} 배포</p></div><div className="reporter-tip"><Copy/><p><b>글을 하나씩 확인하세요.</b><br/>제목과 제목이 포함된 본문을 복사한 뒤, 이미지는 순차 복사하거나 원본으로 한꺼번에 받으면 됩니다.</p></div></header>
       {activePost?<div className="mt-6" ref={cardStartRef}>
         <div className="post-pager-top"><span>{activeIndex+1} / {data.posts.length}</span><strong>{categorizedTitle(activePost.category,activePost.title)}</strong></div>
-        <ReporterPost key={activePost.id} post={activePost} index={activeIndex} notify={notify}/>
+        <ReporterPost key={activePost.id} post={activePost} index={activeIndex} total={data.posts.length} notify={notify} onBusy={setTransferring} onTransferred={()=>{setTransferring(false);setActiveIndex((current)=>Math.min(current+1,data.posts.length-1));setFeedback(activeIndex<data.posts.length-1?'이미지와 글을 넣었습니다. 다음 글로 이동했습니다.':'마지막 글 입력 완료 · 최종 게시는 SNS에서 직접 눌러 주세요.');requestAnimationFrame(()=>cardStartRef.current?.scrollIntoView({behavior:'smooth',block:'start'}));}}/>
         {feedback&&<p className="action-feedback" role="status" aria-live="polite">{feedback}</p>}
-        <PostPager current={activeIndex} total={data.posts.length} onMove={movePost}/>
+        <PostPager current={activeIndex} total={data.posts.length} onMove={movePost} disabled={transferring}/>
       </div>:<div className="empty-inline mt-6"><Images/><span>배포된 게시물이 없습니다.</span></div>}
       <footer className="py-10 text-center text-xs text-muted">고대신문 SNS 배포실 · 링크가 만료되면 배포 담당자에게 문의해 주세요.</footer>
     </main>
   </div>;
 }
 
-type ReporterPostProps = { post: DistributionPost; index:number; notify:(value:string)=>void };
+type ReporterPostProps = { post: DistributionPost; index:number; total:number; notify:(value:string)=>void; onBusy:(busy:boolean)=>void; onTransferred:()=>void };
 
-function ReporterPost({ post,index,notify }: ReporterPostProps) {
+function ReporterPost({ post,index,total,notify,onBusy,onTransferred }: ReporterPostProps) {
   const [working,setWorking]=useState('');
   const [pasteMode,setPasteMode]=useState(false);
   const [pasteIndex,setPasteIndex]=useState(0);
   const [extensionStatus,setExtensionStatus]=useState<'checking'|'available'|'outdated'|'unavailable'|'unsupported'>('checking');
   const [instagramUpload,setInstagramUpload]=useState<{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number}>({jobId:'',state:'QUEUED',message:'',current:0,total:0});
   const activeJobId=useRef('');
+  const pending=useRef<{jobId:string;count:number;index:number;postId:string;currentPostId:string}|null>(null);
+  const onTransferredRef=useRef(onTransferred); onTransferredRef.current=onTransferred;
   const totalSize=useMemo(()=>post.assets.reduce((sum,asset)=>sum+asset.sizeBytes,0),[post.assets]);
   const videoCount=post.assets.filter(isVideoAsset).length;
   const imageAssets=post.assets.filter((asset)=>!isVideoAsset(asset));
@@ -79,11 +83,18 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
       if(!alive||!isExtensionEvent(event))return;
       const {type,payload}=event.data;
       if(type==='SNS_EXTENSION_PONG'){setExtensionStatus(payload.version===expectedExtensionVersion?'available':'outdated');return;}
-      if(payload.jobId&&payload.jobId!==activeJobId.current)return;
+      if(!payload.jobId||payload.jobId!==activeJobId.current)return;
       if(type==='SNS_UPLOAD_ACK'){setInstagramUpload((current)=>({...current,state:'QUEUED',message:'확장 프로그램에 연결했습니다.'}));return;}
       if(type==='SNS_UPLOAD_PROGRESS'){setInstagramUpload((current)=>({...current,state:payload.state||current.state,message:payload.userMessage||current.message,current:payload.current||0,total:payload.total||current.total}));return;}
-      if(type==='SNS_UPLOAD_COMPLETE'){setInstagramUpload((current)=>({...current,state:'COMPLETE',message:payload.userMessage||`이미지 ${payload.count||current.total}장 전달 완료`,current:current.total}));return;}
-      if(type==='SNS_UPLOAD_ERROR'){setInstagramUpload((current)=>({...current,state:payload.code==='USER_CANCELLED'?'CANCELLED':'ERROR',message:payload.userMessage||'Instagram 전달에 실패했습니다.'}));}
+      if(type==='SNS_UPLOAD_COMPLETE'){
+        if (!activeJobId.current) return;
+        const matching = pending.current && payload.contentInserted===true && payload.count===pending.current.count && payload.postId===post.id;
+        const next=nextPostAfterTransfer(index,total,pending.current,{type,payload});
+        activeJobId.current=''; pending.current=null; onBusy(false);
+        setInstagramUpload((current)=>({...current,state:matching?'COMPLETE':'ERROR',message:matching?(payload.userMessage||'이미지 + 글 입력 완료'):'전달 결과를 확인하지 못했습니다. 현재 글을 유지합니다.',current:current.total}));
+        if(matching && (next!==index || index===total-1)) onTransferredRef.current(); return;
+      }
+      if(type==='SNS_UPLOAD_ERROR'){activeJobId.current='';pending.current=null;onBusy(false);setInstagramUpload((current)=>({...current,state:payload.code==='USER_CANCELLED'?'CANCELLED':'ERROR',message:payload.userMessage||'SNS 전달에 실패했습니다. 현재 글을 유지합니다.'}));}
     };
     window.addEventListener('message',onMessage);
     postExtensionMessage('SNS_EXTENSION_PING');
@@ -110,17 +121,21 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
     if(!imageAssets.length){notify('복사할 이미지가 없습니다.');return;}
     await copyForPaste(0);
   }
-  function startInstagram(){
+  function startInstagram(target:SNSTarget='instagram',studio=false){
+    if(activeJobId.current) return;
     try{
-      const job=buildInstagramJob(imageAssets);
+      const job=buildSNSJob(post,target,studio);
       activeJobId.current=job.jobId;
+      pending.current={jobId:job.jobId,count:job.assets.length,index,postId:post.id,currentPostId:post.id}; onBusy(true);
       setInstagramUpload({jobId:job.jobId,state:'QUEUED',message:'확장 프로그램에 연결 중입니다.',current:0,total:job.assets.length});
       postExtensionMessage('SNS_UPLOAD_REQUEST',job);
-    }catch(error){notify(error instanceof Error?error.message:'Instagram 전달 작업을 만들지 못했습니다.');}
+    }catch(error){activeJobId.current='';pending.current=null;onBusy(false);notify(error instanceof Error?error.message:'SNS 전달 작업을 만들지 못했습니다.');}
   }
   function cancelInstagram(){
     if(!activeJobId.current)return;
-    postExtensionMessage('SNS_UPLOAD_CANCEL',{jobId:activeJobId.current});
+    const jobId=activeJobId.current; activeJobId.current='';pending.current=null;onBusy(false);
+    setInstagramUpload((current)=>({...current,state:'CANCELLED',message:'전달을 취소했습니다. 현재 글을 유지합니다. SNS에 이미 들어간 내용은 직접 확인해 주세요.'}));
+    postExtensionMessage('SNS_UPLOAD_CANCEL',{jobId});
   }
 
   return <article className="reporter-card">
@@ -135,7 +150,7 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
 
       {extensionStatus==='available'&&<section className="instagram-transfer mt-4" aria-label="Chrome 배포 패널"><div className="instagram-transfer-head"><Plug/><div><b>Chrome 배포 패널</b><span>SNS 탭을 옮겨도 이 글과 복사·원본 넣기 버튼을 오른쪽에 유지합니다.</span></div><button className="button primary" onClick={()=>postExtensionMessage('SNS_OPEN_PANEL')}><ExternalLink/>배포 패널 열기</button></div></section>}
 
-      {imageAssets.length>0&&<InstagramTransfer status={extensionStatus} chromeMajor={chromeMajor} upload={instagramUpload} onStart={startInstagram} onCancel={cancelInstagram}/>}
+      {post.assets.length>0&&<InstagramTransfer status={extensionStatus} chromeMajor={chromeMajor} upload={instagramUpload} onStart={startInstagram} onCancel={cancelInstagram}/>}
 
       {imageAssets.length>0&&<div className="paste-transfer mt-4">
         {!pasteMode?<div className="paste-start"><Copy/><div><b>이미지 순차 복사</b><span>1번 이미지부터 복사하고 다음 순서를 기억합니다.</span></div><button className="button primary" onClick={startPaste} disabled={working.startsWith('paste-')}><Copy/>순차 복사 시작</button></div>
@@ -154,23 +169,31 @@ function ReporterPost({ post,index,notify }: ReporterPostProps) {
   </article>;
 }
 
-function InstagramTransfer({status,chromeMajor,upload,onStart,onCancel}:{status:'checking'|'available'|'outdated'|'unavailable'|'unsupported';chromeMajor:number|null;upload:{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number};onStart:()=>void;onCancel:()=>void}) {
+function InstagramTransfer({status,chromeMajor,upload,onStart,onCancel}:{status:'checking'|'available'|'outdated'|'unavailable'|'unsupported';chromeMajor:number|null;upload:{jobId:string;state:ExtensionUploadState;message:string;current:number;total:number};onStart:(target:SNSTarget,studio?:boolean)=>void;onCancel:()=>void}) {
   const busy=Boolean(upload.jobId)&&!['COMPLETE','ERROR','CANCELLED'].includes(upload.state);
   const progress=upload.total?Math.round((upload.current/upload.total)*100):upload.state==='OPENING_TARGET'?12:upload.state==='INJECTING'?80:upload.state==='VERIFYING'?92:8;
-  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.2.2`;
-  if(status==='unsupported')return <section className="instagram-transfer mobile-fallback mt-4"><Instagram/><div><b>Instagram 자동 넣기는 PC Chrome 전용</b><span>{chromeMajor&&chromeMajor<148?`Chrome ${chromeMajor}에서는 사용할 수 없습니다. 148 이상으로 업데이트해 주세요.`:'모바일에서는 아래의 이미지 순차 복사나 원본 저장을 사용하세요.'}</span></div></section>;
-  if(status==='outdated')return <section className="instagram-transfer mt-4"><div className="extension-install"><div><b>확장 프로그램 업데이트가 필요합니다.</b><span>최신 ZIP으로 폴더를 교체하고 확장 관리 화면에서 새로고침해 주세요.</span></div><a className="button primary" href={zipUrl} download><Download/>2.2.2 받기</a></div></section>;
+  const zipUrl=`${import.meta.env.BASE_URL}kudae-sns-upload-helper.zip?v=2.3.0`;
+  if(status==='unsupported')return <section className="instagram-transfer mobile-fallback mt-4"><Plug/><div><b>이미지 + 글 자동 넣기는 PC Chrome 전용</b><span>{chromeMajor&&chromeMajor<148?`Chrome ${chromeMajor}에서는 사용할 수 없습니다. 148 이상으로 업데이트해 주세요.`:'모바일에서는 제목·본문 복사와 원본 저장을 사용하세요. 자동 입력·다음 글 이동은 PC 확장 전용입니다.'}</span></div></section>;
+  if(status==='outdated')return <section className="instagram-transfer mt-4"><div className="extension-install"><div><b>한 번에 입력하려면 확장 업데이트가 필요합니다.</b><span>2.3.0 ZIP으로 기존 폴더를 교체하고 확장 관리 화면에서 새로고침한 뒤 SNS 탭도 새로고침해 주세요.</span></div><a className="button primary" href={zipUrl} download><Download/>2.3.0 받기</a></div></section>;
   return <section className={`instagram-transfer mt-4 ${upload.state.toLowerCase()}`} aria-label="Instagram 자동 이미지 전달">
-    <div className="instagram-transfer-head"><Instagram/><div><b>Instagram에 바로 넣기</b><span>다운로드 없이 원본 이미지를 Instagram Web 게시물 창에 전달합니다.</span></div>{status==='available'?<em><ShieldCheck/>확장 연결됨</em>:<em className="muted"><Plug/>{status==='checking'?'확인 중':'설치 필요'}</em>}</div>
+    <div className="instagram-transfer-head"><Plug/><div><b>이미지 + 글 한 번에 넣기</b><span>성공하면 다음 글로 이동합니다. 실제 게시 버튼은 직접 눌러 주세요.</span></div>{status==='available'?<em><ShieldCheck/>확장 연결됨</em>:<em className="muted"><Plug/>{status==='checking'?'확인 중':'설치 필요'}</em>}</div>
     {status==='available'?<div className="instagram-transfer-action">
-      {upload.jobId?<div className="extension-progress"><div><b>{upload.message||'Instagram 연결 중'}</b><span>{upload.state==='WAITING_FOR_COMPOSER'||upload.state==='WAITING_FOR_FILE_INPUT'?"Instagram에서 '만들기 → 게시물'을 열면 자동으로 계속됩니다.":upload.state==='COMPLETE'?'크롭과 본문을 확인하고 게시 버튼은 직접 눌러 주세요.':'이미지는 메모리에서만 처리되며 PC에 저장되지 않습니다.'}</span></div><div className="extension-progress-bar"><i style={{width:`${upload.state==='COMPLETE'?100:progress}%`}}/></div></div>:<p>PC Chrome 148 이상에서 사용할 수 있습니다. 기존 순차 복사 기능은 그대로 유지됩니다.</p>}
-      <div className="instagram-buttons">{busy?<button className="button ghost" onClick={onCancel}><XCircle/>취소</button>:<button className="button primary" onClick={onStart}><Instagram/>{upload.jobId?'다시 넣기':'Instagram에 바로 넣기'}</button>}</div>
+      {upload.jobId?<div className="extension-progress"><div><b>{upload.message||'SNS 연결 중'}</b><span>{['WAITING_FOR_COMPOSER','WAITING_FOR_FILE_INPUT','WAITING_FOR_TEXT_INPUT'].includes(upload.state)?'선택한 SNS의 새 글 작성창을 열면 계속합니다.':upload.state==='COMPLETE'?'글과 이미지 순서·비율을 확인하고 게시 버튼은 직접 눌러 주세요.':'원본은 메모리에서만 처리합니다. 성공하면 다음 글로 이동합니다.'}</span></div><div className="extension-progress-bar"><i style={{width:`${upload.state==='COMPLETE'?100:progress}%`}}/></div></div>:<p>PC Chrome 148 이상 · SNS 작성창을 먼저 열어 주세요. 모바일과 수동 복사 기능은 그대로 유지합니다.</p>}
+      <div className="sns-one-click-buttons">{busy?<button className="button ghost" onClick={onCancel}><XCircle/>취소 · 현재 글 유지</button>:<>
+        <button className="button primary" onClick={()=>onStart('koreapas')}>고파스 전용 · 제목+본문+이미지</button>
+        <button className="button primary" onClick={()=>onStart('everytime')}>에타 전용 · 제목+본문+이미지</button>
+        <button className="button secondary" onClick={()=>onStart('facebook')}>Facebook · 이미지+글</button>
+        <button className="button secondary" onClick={()=>onStart('instagram')}><Instagram/>Instagram · 이미지+글</button>
+        <button className="button secondary" onClick={()=>onStart('x')}>X · 이미지+글</button>
+        <button className="button secondary" onClick={()=>onStart('youtube')}>YouTube 게시물 · 이미지+글</button>
+        <button className="button secondary" onClick={()=>onStart('youtube',true)}>YouTube Studio · 영상+제목·설명</button>
+      </>}</div>
     </div>:status==='unavailable'?<div className="extension-install"><div><b>무료 Chrome 확장 프로그램이 필요합니다.</b><span>ZIP 압축 해제 → chrome://extensions → 개발자 모드 → 압축해제된 확장 프로그램 로드</span></div><a className="button primary" href={zipUrl} download><Download/>확장 다운로드</a></div>:<div className="extension-install"><LoaderCircle className="animate-spin"/><span>설치 여부를 확인하고 있습니다.</span></div>}
   </section>;
 }
 
-function PostPager({current,total,onMove}:{current:number;total:number;onMove:(index:number)=>void}) {
-  return <nav className="post-pager" aria-label="게시물 이동"><button className="button secondary" disabled={current===0} onClick={()=>onMove(current-1)}><ArrowLeft/>이전 글</button><span><b>{current+1}</b> / {total}</span><button className="button primary" disabled={current>=total-1} onClick={()=>onMove(current+1)}>다음 글<ArrowRight/></button></nav>;
+function PostPager({current,total,onMove,disabled=false}:{current:number;total:number;onMove:(index:number)=>void;disabled?:boolean}) {
+  return <nav className="post-pager" aria-label="게시물 이동"><button className="button secondary" disabled={disabled||current===0} onClick={()=>onMove(current-1)}><ArrowLeft/>이전 글</button><span><b>{current+1}</b> / {total}</span><button className="button primary" disabled={disabled||current>=total-1} onClick={()=>onMove(current+1)}>다음 글<ArrowRight/></button></nav>;
 }
 
 function PageState({icon,title,description,action}:{icon:React.ReactNode;title:string;description:string;action?:React.ReactNode}){return <main className="grid min-h-screen place-items-center bg-canvas p-5"><section className="panel max-w-md p-8 text-center"><span className="state-icon">{icon}</span><h1 className="mt-5 text-xl font-bold">{title}</h1><p className="mt-2 text-sm leading-6 text-muted">{description}</p>{action&&<div className="mt-5">{action}</div>}</section></main>}

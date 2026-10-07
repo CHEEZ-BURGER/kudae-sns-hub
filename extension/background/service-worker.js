@@ -3,6 +3,7 @@ importScripts('../shared/constants.js', '../shared/validators.js', '../shared/pr
 const api = globalThis.KudaeSNS;
 const controllers = new Map();
 const targetPorts = new Map();
+const targetCapabilities = new Map();
 const runningJobs = new Set();
 const jobKey = (jobId) => `job:${jobId}`;
 
@@ -75,6 +76,7 @@ async function persistJob(checked, source) {
     updatedAt: Date.now(),
     assets: checked.value.assets,
     caption: checked.value.caption,
+    contentMode: checked.value.contentMode, title: checked.value.title, body: checked.value.body, postId: checked.value.postId,
     sourceTabId: source.sourceTabId || null,
     sourceOrigin: source.sourceOrigin || null,
     sourcePanel: Boolean(source.sourcePanel),
@@ -92,12 +94,25 @@ async function createUploadJob(rawJob, sender) {
   const checked = api.validateJob(rawJob);
   if (!checked.ok) throw checked.error;
   const job = await persistJob(checked, { sourceTabId: sender.tab.id, sourceOrigin: senderUrl.origin });
-  await setState(job, api.STATES.OPENING_TARGET, 'Instagram을 여는 중입니다.');
+  await setState(job, api.STATES.OPENING_TARGET, `${api.TARGET_LABELS[job.target]} 작성창에 연결 중입니다.`);
   let targetTab;
-  try { targetTab = await chrome.tabs.create({ url: 'https://www.instagram.com/', active: true }); }
-  catch (error) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'Instagram 탭을 열지 못했습니다.', String(error)); }
-  if (!targetTab.id) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'Instagram 탭 번호를 확인하지 못했습니다.'); }
-  await updateJob(job.jobId, { targetTabId: targetTab.id, updatedAt: Date.now() });
+  try {
+    const tabs = await chrome.tabs.query({ lastFocusedWindow: true });
+    const matches = tabs.filter((tab) => platformForUrl(tab.url) === job.target &&
+      (job.target !== 'youtube' || (tab.url?.includes('studio.youtube.com') === (job.contentMode === 'separate'))));
+    targetTab = matches.find((tab) => tab.active) || matches.at(-1);
+    if (targetTab) await chrome.tabs.update(targetTab.id, { active: true });
+    else {
+      const urls = { instagram:'https://www.instagram.com/', facebook:'https://www.facebook.com/', koreapas:'https://www.koreapas.com/', everytime:'https://everytime.kr/', x:'https://x.com/', youtube:job.contentMode==='separate'?'https://studio.youtube.com/':'https://www.youtube.com/' };
+      targetTab = await chrome.tabs.create({ url: urls[job.target], active: true });
+    }
+  }
+  catch (error) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'SNS 탭을 열지 못했습니다.', String(error)); }
+  if (!targetTab.id) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'SNS 탭 번호를 확인하지 못했습니다.'); }
+  if (await findJobForTarget(targetTab.id)) { await deleteJob(job.jobId); throw api.extensionError('TARGET_BUSY', '이 SNS 탭에 다른 글을 전달 중입니다. 완료하거나 취소한 뒤 다시 시도해 주세요.'); }
+  const readyJob = await updateJob(job.jobId, { targetTabId: targetTab.id, updatedAt: Date.now() });
+  const port = targetPorts.get(targetTab.id);
+  if (port && readyJob) void runJob(readyJob, port);
   return job.jobId;
 }
 
@@ -108,6 +123,8 @@ async function createPanelJob(rawJob, targetTabId, sender) {
   const tab = await chrome.tabs.get(targetTabId);
   const detected = platformForUrl(tab.url);
   if (!detected || detected !== checked.value.target) throw api.extensionError('TARGET_TAB_FAILED', '현재 탭이 선택한 SNS와 일치하지 않습니다. SNS 작성 화면을 먼저 열어 주세요.');
+  await cleanupStaleJobs();
+  if (await findJobForTarget(targetTabId)) throw api.extensionError('TARGET_BUSY', '이 SNS 탭에 다른 글을 전달 중입니다. 완료하거나 취소한 뒤 다시 시도해 주세요.');
   const job = await persistJob(checked, { sourcePanel: true, targetTabId });
   await setState(job, api.STATES.OPENING_TARGET, `${api.TARGET_LABELS[job.target]} 작성창에 연결 중입니다.`);
   const port = targetPorts.get(targetTabId);
@@ -160,6 +177,9 @@ async function fetchFiles(job, signal) {
 }
 
 async function runJob(job, port) {
+  if (job.contentMode && targetCapabilities.get(job.targetTabId) !== 'one-click-v1') {
+    await setState(job, api.STATES.WAITING_FOR_COMPOSER, `${api.TARGET_LABELS[job.target]} 페이지를 새로고침해 주세요. 최신 자동 입력 연결이 필요합니다.`); return;
+  }
   if (runningJobs.has(job.jobId)) return;
   runningJobs.add(job.jobId);
   const controller = new AbortController(); controllers.set(job.jobId, controller);
@@ -167,7 +187,8 @@ async function runJob(job, port) {
   try {
     await setState(job, api.STATES.FETCHING, `원본 준비 중 0/${job.assets.length}`, { current: 0, total: job.assets.length });
     files = await fetchFiles(job, controller.signal);
-    port.postMessage({ type: 'JOB_START', jobId: job.jobId, target: job.target, total: files.length, createdAt: job.createdAt });
+    port.postMessage({ type: 'JOB_START', jobId: job.jobId, target: job.target, total: files.length, createdAt: job.createdAt,
+      contentMode: job.contentMode, title: job.title, body: job.body, caption: job.caption, postId: job.postId });
     files.forEach((file, index) => port.postMessage({ type: 'ASSET', jobId: job.jobId, index, total: files.length, file }));
     port.postMessage({ type: 'JOB_END', jobId: job.jobId, total: files.length });
     files.length = 0;
@@ -216,8 +237,9 @@ chrome.runtime.onConnect.addListener((port) => {
   const tabId = port.sender?.tab?.id;
   if (port.name !== 'KUDAE_SNS_UPLOAD' || !tabId) return;
   targetPorts.set(tabId, port);
-  port.onDisconnect.addListener(() => targetPorts.delete(tabId));
+  port.onDisconnect.addListener(() => { if(targetPorts.get(tabId)===port) { targetPorts.delete(tabId);targetCapabilities.delete(tabId); } });
   port.onMessage.addListener(async (message) => {
+    if (message?.type === 'TARGET_READY') targetCapabilities.set(tabId,message.feature);
     if (message?.type === 'FIXTURE_REQUEST' && Array.isArray(message.urls)) {
       const urls = message.urls.slice(0, 10); const files = [];
       for (let index = 0; index < urls.length; index += 1) {
@@ -238,7 +260,10 @@ chrome.runtime.onConnect.addListener((port) => {
       await relay(job, api.progress(job.jobId, message.state, message.userMessage, message.extra || {})); return;
     }
     if (message.type === 'TARGET_COMPLETE') {
-      await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, originalRatioSelected: Boolean(message.originalRatioSelected), userMessage: message.userMessage || `원본 ${message.count}개 전달 완료` }));
+      if (job.contentMode && (!message.contentInserted || message.count !== job.assets.length)) {
+        await failJob(job, api.extensionError('TEXT_INSERT_FAILED', '이미지 또는 글 입력이 완료되지 않았습니다. 현재 글을 유지합니다.')); return;
+      }
+      await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, contentInserted: Boolean(message.contentInserted), postId: job.postId, originalRatioSelected: Boolean(message.originalRatioSelected), userMessage: message.userMessage || `원본 ${message.count}개 전달 완료` }));
       await deleteJob(job.jobId); return;
     }
     if (message.type === 'TARGET_ERROR') await failJob(job, message.error);

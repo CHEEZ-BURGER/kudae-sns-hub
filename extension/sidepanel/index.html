@@ -31,6 +31,17 @@
       <article class="post-card">
         <div class="post-head"><span id="post-position"></span><h2 id="post-title"></h2></div>
         <div id="media-rail" class="media-rail"></div>
+        <p class="tool-label">한 번에 입력 · 성공하면 다음 글로 이동</p>
+        <button id="inject-files" type="button" class="primary upload">현재 SNS에 이미지 + 글 넣기</button>
+        <div class="platform-shortcuts">
+          <button type="button" class="secondary" data-upload-target="koreapas">고파스 전용</button>
+          <button type="button" class="secondary" data-upload-target="everytime">에타 전용</button>
+          <button type="button" class="secondary" data-upload-target="youtube" data-studio="true">YouTube Studio 전용</button>
+        </div>
+        <p class="tool-label">전용 버튼은 제목과 본문을 각각 넣습니다. SNS 작성창을 먼저 열어 주세요.</p>
+        <button id="cancel-upload" type="button" class="secondary upload" hidden>전달 취소 · 현재 글 유지</button>
+        <div id="upload-status" class="upload-status" hidden><b></b><span></span><i><u></u></i></div>
+        <details class="manual-tools"><summary>직접 복사하기 · 자동 입력이 안 될 때</summary>
         <p class="tool-label">글 복사</p>
         <div class="copy-grid">
           <button id="copy-title" type="button" class="secondary">SNS 제목 복사</button>
@@ -40,8 +51,7 @@
         </div>
         <p class="tool-label">원본 파일</p>
         <section class="paste-card"><div><b id="paste-label">이미지 순차 복사</b><span id="paste-help">1번부터 한 장씩 원본을 복사합니다.</span></div><button id="copy-next-image" type="button" class="secondary">1번 복사</button></section>
-        <button id="inject-files" type="button" class="primary upload">현재 SNS에 원본 넣기</button>
-        <div id="upload-status" class="upload-status" hidden><b></b><span></span><i><u></u></i></div>
+        </details>
         <details class="body-preview"><summary>본문 미리보기</summary><pre id="post-body"></pre></details>
       </article>
       <nav class="pager" aria-label="게시물 이동"><button id="previous-post" type="button" class="secondary">← 이전 글</button><span id="pager-text"></span><button id="next-post" type="button" class="primary">다음 글 →</button></nav>

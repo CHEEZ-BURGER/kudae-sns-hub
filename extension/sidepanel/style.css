@@ -198,6 +198,10 @@ main { padding: 16px 14px 12px; }
 .paste-card button { flex: none; }
 
 .upload { width: 100%; min-height: 42px; margin-top: 8px; font-size: 11px; }
+.platform-shortcuts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin-top: 8px; }
+.platform-shortcuts button:last-child { grid-column: 1 / -1; }
+.manual-tools { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.manual-tools summary { color: var(--muted); font-size: 9px; font-weight: 650; cursor: pointer; }
 .upload-status { display: grid; gap: 4px; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #faf4f6; }
 .upload-status b { font-size: 9px; }
 .upload-status span { color: #806f75; font-size: 8px; line-height: 1.5; }

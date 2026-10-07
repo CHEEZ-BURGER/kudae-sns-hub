@@ -104,13 +104,13 @@
 
     accessibleLabel(element) {
       const descendant = element.querySelector('[aria-label],img[alt]');
-      return [
+      return [...new Set([
         element.getAttribute('aria-label'),
         element.getAttribute('title'),
         descendant?.getAttribute('aria-label'),
         descendant?.getAttribute('alt'),
         element.textContent,
-      ].filter(Boolean).join(' ').trim().replace(/\s+/g, ' ');
+      ].filter(Boolean).map((value)=>value.trim().replace(/\s+/g,' ')))].join(' ');
     }
 
     findAspectRatioButton() {
@@ -153,6 +153,7 @@
   let files = [];
   let total = 0;
   let finished = false;
+  let content = null;
 
   function clearMemory() {
     files.length = 0;
@@ -189,12 +190,27 @@
       if (!reacted) throw api.extensionError('COMPOSER_DID_NOT_REACT', '이미지는 전달했지만 Instagram 화면이 반응하지 않았습니다.', 'FileList assigned but composer did not react');
       targetProgress(api.STATES.VERIFYING, 'Instagram의 이미지 비율을 원본으로 맞추는 중입니다.');
       const originalRatioSelected = await adapter.selectOriginalAspectRatio();
+      let contentInserted = false;
+      if (content?.contentMode) {
+        // Internal compose steps only. Never click Share/Publish.
+        for (let step = 0; step < 2 && !api.findTextFields('instagram','caption'); step++) {
+          let next;
+          try {
+            next = await api.waitForMutation(() => [...(adapter.dialog() || document).querySelectorAll('button,[role="button"]')]
+              .find((element) => !element.disabled && element.getClientRects().length > 0 &&
+                [element.getAttribute('aria-label'),element.textContent].some((value)=>/^(다음|next)$/i.test((value||'').trim()))), 6000, controller.signal);
+          } catch { break; }
+          next.click();
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        }
+        contentInserted = await api.fillText('instagram', content, controller.signal, targetProgress);
+      }
       const count = files.length;
       finished = true;
-      const completionMessage = originalRatioSelected ? `원본 비율로 이미지 ${count}장 전달 완료` : `원본 이미지 ${count}장 전달 완료 · 비율 확인 필요`;
+      const completionMessage = originalRatioSelected ? `원본 비율로 이미지 ${count}장${contentInserted?' + 글 입력':''} 완료` : `원본 이미지 ${count}장${contentInserted?' + 글 입력':''} 완료 · 비율 확인 필요`;
       const completionDetail = originalRatioSelected ? '원본 비율을 적용했습니다. 본문을 확인한 뒤 게시 버튼은 직접 눌러 주세요.' : "Instagram 왼쪽 아래의 비율 버튼을 누르고 '원본'을 선택해 주세요.";
       overlay.complete(completionMessage, completionDetail);
-      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count, originalRatioSelected, userMessage: completionMessage });
+      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count, contentInserted, originalRatioSelected, userMessage: completionMessage });
       clearMemory();
     } catch (error) {
       if (error?.code === 'USER_CANCELLED') return;
@@ -209,12 +225,13 @@
   function connect() {
     port = chrome.runtime.connect({ name: 'KUDAE_SNS_UPLOAD' });
     port.onMessage.addListener((message) => {
-      if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY' }); return; }
+      if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY', feature:'one-click-v1' }); return; }
       if (message?.type === 'JOB_START') {
         currentJobId = message.jobId;
         total = message.total;
         files = new Array(total);
         finished = false;
+        content = message;
         overlay?.remove();
         overlay = new api.StatusOverlay(cancelOrClose);
         overlay.update(`이미지 전달 준비 중 0/${total}`, '', 0, total);
@@ -230,8 +247,8 @@
         overlay.update(`이미지 받는 중 ${received}/${total}`, '', received, total);
         return;
       }
-      if (message?.type === 'JOB_END' && message.jobId === currentJobId) {
-        if (files.some((file) => !(file instanceof File))) {
+      if (message?.type === 'JOB_END' && message.jobId === currentJobId && !finished) {
+        if (files.length !== total || Array.from(files).some((file) => !(file instanceof File))) {
           port.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: api.extensionError('INVALID_JOB', '일부 이미지가 전달되지 않았습니다.') });
           return;
         }

@@ -1,0 +1,3 @@
+export type UploadContent = { contentMode: 'caption' | 'separate'; title: string; body: string; caption: string; postId: string };
+export function uploadContent(post: { id?: string; title: string; category?: string; body?: string; articleUrl?: string; credits?: string }, target: string, studio?: boolean): UploadContent;
+export function nextPostAfterTransfer(current: number, total: number, pending: { jobId: string; count: number; index: number; postId: string; currentPostId: string } | null, event: { type: string; payload?: { jobId?: string; count?: number; contentInserted?: boolean } }): number;

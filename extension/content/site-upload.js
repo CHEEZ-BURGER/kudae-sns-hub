@@ -12,14 +12,21 @@
   const target = Object.entries(SITE_RULES).find(([, rule]) => rule.hosts.includes(hostname))?.[0] || null;
   if (!target) return;
   const rule = SITE_RULES[target];
-  let port; let overlay; let controller; let currentJobId = ''; let files = []; let total = 0; let finished = false;
+  let port; let overlay; let controller; let currentJobId = ''; let files = []; let total = 0; let finished = false; let content = null;
 
   const labelOf = (element) => [element.getAttribute('aria-label'), element.getAttribute('title'), element.textContent]
     .filter(Boolean).join(' ').trim().replace(/\s+/g, ' ');
 
   function findUploadInput() {
     const expected = target === 'youtube' && files[0]?.type?.startsWith('video/') ? 'video' : rule.kind;
-    const candidates = [...document.querySelectorAll('input[type="file"]')].filter((input) => !input.disabled);
+    const fields = content?.contentMode ? api.findTextFields(target,content.contentMode) : null;
+    const form = fields?.title?.closest('form') || fields?.body?.closest('form');
+    const candidates = [...document.querySelectorAll('input[type="file"]')].filter((input) => {
+      const accept=(input.getAttribute('accept')||'').toLowerCase();
+      const compatible = !accept || accept.includes('*/*') || accept.includes(expected) ||
+        (expected==='image' ? /\.(png|jpe?g|webp|gif)/.test(accept) : /\.(mp4|webm|mov|m4v)/.test(accept));
+      return compatible && !input.disabled && (!form || !['koreapas','everytime'].includes(target) || form.contains(input));
+    });
     return candidates.map((input, index) => {
       const accept = (input.getAttribute('accept') || '').toLowerCase();
       let score = index;
@@ -92,15 +99,22 @@
     controller = new AbortController(); overlay ||= new api.StatusOverlay(cancelOrClose);
     try {
       await prepareComposer();
-      const input = await waitForUploadInput();
+      let input = await waitForUploadInput();
+      const textAfterFiles = target === 'youtube';
+      let contentInserted = textAfterFiles ? false : await api.fillText(target, content, controller.signal, progress);
+      input = findUploadInput() || await waitForUploadInput();
       progress(api.STATES.INJECTING, `원본 ${files.length}개를 넣는 중입니다.`);
       await injectFiles(input);
       progress(api.STATES.VERIFYING, `${api.TARGET_LABELS[target]}가 파일을 받았는지 확인 중입니다.`);
       if (!await verifyInjection(input)) throw api.extensionError('COMPOSER_DID_NOT_REACT', '파일은 전달했지만 작성 화면이 반응하지 않았습니다.', '패널의 순차 복사를 사용해 주세요.');
+      if (textAfterFiles) {
+        const afterContent = { ...content, replaceableTitle: files[0]?.name.replace(/\.[^.]+$/,'') };
+        contentInserted = await api.fillText(target, afterContent, controller.signal, progress);
+      } else if (contentInserted) await api.fillText(target, content, controller.signal, progress);
       const count = files.length; finished = true;
-      const message = `원본 ${count}개 전달 완료`;
+      const message = contentInserted ? `원본 ${count}개 + 글 입력 완료` : `원본 ${count}개 전달 완료`;
       overlay.complete(message, '내용을 확인한 뒤 최종 게시 버튼은 직접 눌러 주세요.');
-      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count, userMessage: message }); clearMemory();
+      port.postMessage({ type: 'TARGET_COMPLETE', jobId: currentJobId, count, contentInserted, userMessage: message }); clearMemory();
     } catch (error) {
       if (error?.code === 'USER_CANCELLED') return;
       const normalized = error?.code ? error : api.extensionError('FILE_ASSIGN_FAILED', 'SNS에 파일을 전달하지 못했습니다.', String(error));
@@ -111,18 +125,19 @@
 
   port = chrome.runtime.connect({ name: 'KUDAE_SNS_UPLOAD' });
   port.onMessage.addListener((message) => {
-    if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY' }); return; }
+    if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY', feature:'one-click-v1' }); return; }
     if (message?.type === 'JOB_START') {
       if (message.target && message.target !== target) return;
       currentJobId = message.jobId; total = message.total; files = new Array(total); finished = false;
+      content = message;
       overlay?.remove(); overlay = new api.StatusOverlay(cancelOrClose); overlay.update(`원본 받는 중 0/${total}`, '', 0, total); return;
     }
     if (message?.type === 'ASSET' && message.jobId === currentJobId) {
       if (!(message.file instanceof File) || message.index < 0 || message.index >= total) { port.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: api.extensionError('INVALID_JOB', '전달받은 파일이 올바르지 않습니다.') }); return; }
       files[message.index] = message.file; const received = files.filter(Boolean).length; overlay.update(`원본 받는 중 ${received}/${total}`, '', received, total); return;
     }
-    if (message?.type === 'JOB_END' && message.jobId === currentJobId) {
-      if (files.some((file) => !(file instanceof File))) { port.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: api.extensionError('INVALID_JOB', '일부 파일이 전달되지 않았습니다.') }); return; }
+    if (message?.type === 'JOB_END' && message.jobId === currentJobId && !finished) {
+      if (files.length !== total || Array.from(files).some((file) => !(file instanceof File))) { port.postMessage({ type: 'TARGET_ERROR', jobId: currentJobId, error: api.extensionError('INVALID_JOB', '일부 파일이 전달되지 않았습니다.') }); return; }
       void finishJob(); return;
     }
     if (message?.type === 'JOB_CANCEL' && message.jobId === currentJobId) cancelOrClose();

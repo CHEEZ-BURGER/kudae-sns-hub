@@ -1,9 +1,11 @@
-import type { DistributionAsset } from '../types';
+import type { DistributionAsset, DistributionPost } from '../types';
+import { uploadContent } from '../../extension/shared/upload-content.mjs';
 
 export const APP_SOURCE = 'KUDAE_SNS_WORKFLOW';
 export const EXTENSION_SOURCE = 'KUDAE_SNS_EXTENSION';
 
-export type ExtensionUploadState = 'QUEUED' | 'OPENING_TARGET' | 'FETCHING' | 'WAITING_FOR_COMPOSER' | 'WAITING_FOR_FILE_INPUT' | 'INJECTING' | 'VERIFYING' | 'COMPLETE' | 'CANCELLED' | 'ERROR';
+export type ExtensionUploadState = 'QUEUED' | 'OPENING_TARGET' | 'FETCHING' | 'WAITING_FOR_COMPOSER' | 'WAITING_FOR_FILE_INPUT' | 'WAITING_FOR_TEXT_INPUT' | 'INJECTING' | 'VERIFYING' | 'COMPLETE' | 'CANCELLED' | 'ERROR';
+export type SNSTarget = 'instagram' | 'facebook' | 'koreapas' | 'everytime' | 'x' | 'youtube';
 
 export type ExtensionEvent = {
   source: typeof EXTENSION_SOURCE;
@@ -18,6 +20,8 @@ export type ExtensionEvent = {
     code?: string;
     version?: string;
     count?: number;
+    contentInserted?: boolean;
+    postId?: string;
   };
 };
 
@@ -50,6 +54,19 @@ export function buildInstagramJob(assets: DistributionAsset[], now = Date.now(),
     })),
     caption: '',
   };
+}
+
+export function buildSNSJob(post: DistributionPost, target: SNSTarget, studio = false, now = Date.now(), id = crypto.randomUUID()) {
+  const extensions: Record<string,string> = { ...mimeExtensions, 'image/gif':'gif', 'video/mp4':'mp4', 'video/webm':'webm', 'video/quicktime':'mov', 'video/x-m4v':'m4v' };
+  const assets = post.assets;
+  if (!assets.length) throw new Error('이 글에는 전달할 원본이 없습니다.');
+  if (assets.some((asset) => !extensions[asset.mimeType.toLowerCase()])) throw new Error('지원하지 않는 이미지 형식이 섞여 있습니다. 원본 다운로드를 이용해 주세요.');
+  if (assets.some((asset) => asset.mimeType.startsWith(studio ? 'image/' : 'video/'))) throw new Error(studio ? 'YouTube Studio 자동 넣기는 영상만 있는 글에서 사용해 주세요.' : '영상이 포함된 글입니다. 영상은 YouTube Studio 전용 버튼 또는 원본 다운로드를 이용해 주세요.');
+  if (target === 'x' && assets.length > 4) throw new Error('X는 이미지 4장까지 받습니다. 일부만 넣고 다음 글로 넘기지 않습니다.');
+  if (target === 'youtube' && assets.length > (studio ? 1 : 10)) throw new Error(studio ? 'YouTube Studio에는 영상 1개씩 넣어 주세요.' : 'YouTube 게시물에는 이미지 10장까지 넣을 수 있습니다.');
+  return { jobId:id, target, createdAt:now, ...uploadContent(post,target,studio),
+    assets: assets.map((asset,order) => ({ order, url:asset.originalUrl, mimeType:asset.mimeType.toLowerCase(),
+      filename:`${studio?'video':'card'}-${String(order+1).padStart(2,'0')}.${extensions[asset.mimeType.toLowerCase()]}` })) };
 }
 
 export function postExtensionMessage(type: 'SNS_EXTENSION_PING' | 'SNS_OPEN_PANEL' | 'SNS_UPLOAD_REQUEST' | 'SNS_UPLOAD_CANCEL', payload: unknown = {}) {

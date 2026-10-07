@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "고대신문 SNS Upload Helper",
   "description": "배포 링크를 오른쪽 패널에서 열고 고대신문 원본을 SNS 작성창에 전달합니다.",
-  "version": "2.2.2",
+  "version": "2.3.0",
   "minimum_chrome_version": "148",
   "message_serialization": "structured_clone",
   "permissions": ["storage", "sidePanel", "clipboardWrite"],
@@ -66,6 +66,7 @@
         "shared/constants.js",
         "shared/validators.js",
         "content/sns-base.js",
+        "content/text-input.js",
         "content/overlay.js",
         "content/instagram.js"
       ],
@@ -88,6 +89,7 @@
         "shared/constants.js",
         "shared/validators.js",
         "content/sns-base.js",
+        "content/text-input.js",
         "content/overlay.js",
         "content/site-upload.js"
       ],
