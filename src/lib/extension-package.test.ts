@@ -9,7 +9,7 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.3.1');
+    expect(manifest.version).toBe('2.3.2');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
@@ -45,7 +45,7 @@ describe('Chrome extension package contract', () => {
     expect(read('extension/sidepanel/index.html')).toContain('<script type="module" src="sidepanel.js">');
     expect(read('extension/sidepanel/index.html')).not.toContain('id="toast"');
     expect(read('extension/sidepanel/index.html').indexOf('class="pager"')).toBeGreaterThan(read('extension/sidepanel/index.html').indexOf('class="post-card"'));
-    expect(read('extension/sidepanel/index.html')).toContain('The Korea University Weekly');
+    expect(read('extension/sidepanel/index.html')).not.toContain('The Korea University Weekly');
     expect(read('extension/sidepanel/style.css')).toMatch(/\.pager \{ position: fixed;/);
     expect(read('extension/sidepanel/style.css')).toContain('bottom: 12px');
     expect(read('extension/sidepanel/style.css')).toContain("url('../fonts/PretendardVariable.woff2')");

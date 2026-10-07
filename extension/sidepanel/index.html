@@ -7,7 +7,17 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="brand"><a class="brand-link" href="https://cheez-burger.github.io/kudae-sns-hub/#/admin" target="_blank" title="관리자 페이지 열기"><img class="brand-mark" src="/branding/ku-weekly-mark.png" alt="고대신문 관리자 페이지"></a><div><b>고대신문 배포 패널</b><span>The Korea University Weekly</span></div><em id="version"></em></header>
+  <svg class="icon-definitions" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+    <symbol id="icon-image" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.5"/><path d="m3 17 5-5 4 4 4-6 5 7"/></symbol>
+    <symbol id="icon-text" viewBox="0 0 24 24"><path d="M7 3h8l4 4v14H5V3h2Zm7 0v5h5M8 12h8M8 16h6"/></symbol>
+    <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="icon-loader" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9"/></symbol>
+    <symbol id="icon-alert" viewBox="0 0 24 24"><path d="m12 3 10 18H2L12 3Zm0 6v5m0 3v.1"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="icon-window" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="3"/><path d="M2 9h20M6 6.5h.1m3 0h.1"/></symbol>
+    <symbol id="icon-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+  </defs></svg>
+  <header class="brand"><a class="brand-link" href="https://cheez-burger.github.io/kudae-sns-hub/#/admin" target="_blank" title="관리자 페이지 열기"><img class="brand-mark" src="/branding/ku-weekly-mark.png" alt="고대신문 관리자 페이지"></a><div><b>고대신문 배포 패널</b></div><em id="version"></em></header>
   <section id="refresh-gate" class="refresh-gate" hidden>
     <img src="/branding/ku-weekly-mark.png" alt="">
     <span>연결을 새로 준비해야 합니다</span>
@@ -18,29 +28,28 @@
   </section>
   <main>
     <form id="link-form" class="link-card">
-      <div class="section-heading"><span>STEP 1</span><label for="distribution-link">배포 링크 불러오기</label></div>
+      <label class="link-heading" for="distribution-link">배포 링크</label>
       <div class="link-row"><input id="distribution-link" type="url" autocomplete="off" placeholder="카카오톡 링크를 붙여 넣으세요" required><button type="submit">불러오기</button></div>
-      <p id="link-status">링크는 이 브라우저 세션에서만 기억합니다.</p>
+      <p id="link-status"></p>
     </form>
-    <section id="empty" class="empty"><img src="/branding/ku-weekly-mark.png" alt=""><strong>배포 링크를 붙여 넣어 시작하세요.</strong><span>글을 불러온 뒤 SNS 탭으로 이동해도<br>오른쪽 패널은 그대로 유지됩니다.</span></section>
     <section id="workspace" hidden>
-      <header class="issue"><div><span id="issue-number"></span><h1 id="issue-title"></h1></div><strong id="post-count"></strong></header>
-      <div class="section-heading workspace-heading"><span>STEP 2</span><b>현재 SNS 연결</b></div>
+      <header class="issue"><div><h1 id="issue-title"></h1></div><strong id="post-count"></strong></header>
       <section class="site-card"><div><i id="site-dot"></i><p><b id="site-name">지원 SNS를 열어 주세요</b><span id="site-help">Facebook · 고파스 · Instagram · YouTube · X · 에타</span></p></div><button id="refresh-site" type="button" class="icon-button" title="현재 탭 다시 확인" aria-label="현재 탭 다시 확인">↻</button></section>
-      <div class="section-heading workspace-heading"><span>STEP 3</span><b>게시물 준비</b></div>
       <article class="post-card">
         <div class="post-head"><span id="post-position"></span><h2 id="post-title"></h2></div>
         <div id="media-rail" class="media-rail"></div>
-        <p class="tool-label">한 번에 입력 · 성공하면 다음 글로 이동</p>
-        <button id="inject-files" type="button" class="primary upload">현재 SNS에 이미지 + 글 넣기</button>
+        <button id="inject-files" type="button" class="primary upload primary-action"><span class="action-copy"><b id="inject-label">이미지 + 글 한 번에 넣기</b><span id="inject-context">SNS 작성창을 먼저 열어 주세요</span></span></button>
         <div class="platform-shortcuts">
           <button type="button" class="secondary" data-upload-target="koreapas">고파스 전용</button>
           <button type="button" class="secondary" data-upload-target="everytime">에타 전용</button>
           <button type="button" class="secondary" data-upload-target="youtube" data-studio="true">YouTube Studio 전용</button>
         </div>
-        <p class="tool-label">전용 버튼은 제목과 본문을 각각 넣습니다. SNS 작성창을 먼저 열어 주세요.</p>
         <button id="cancel-upload" type="button" class="secondary upload" hidden>전달 취소 · 현재 글 유지</button>
-        <div id="upload-status" class="upload-status" hidden><b></b><span></span><i><u></u></i></div>
+        <section id="upload-status" class="upload-status" data-phase="preparing" role="status" aria-live="polite" aria-atomic="true" hidden>
+          <div class="transfer-head"><span class="transfer-state-icon"><svg class="icon" aria-hidden="true"><use id="transfer-icon" href="#icon-loader"/></svg></span><div><b id="upload-title"></b><span id="upload-detail"></span></div></div>
+          <div class="transfer-flow" aria-hidden="true"><div class="transfer-node"><svg class="icon"><use href="#icon-image"/></svg><span id="transfer-count">원본</span></div><div class="transfer-stream"><span class="stream-arrow"><svg class="icon"><use href="#icon-arrow"/></svg></span><span class="stream-label">사진 + 글</span></div><div class="transfer-node transfer-target"><svg class="icon"><use href="#icon-window"/></svg><span>작성창</span></div></div>
+          <div id="upload-progress" class="transfer-progress" role="progressbar" aria-label="SNS 전달 진행" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div>
+        </section>
         <details class="manual-tools"><summary>직접 복사하기 · 자동 입력이 안 될 때</summary>
         <p class="tool-label">글 복사</p>
         <div class="copy-grid">
@@ -57,7 +66,7 @@
       <nav class="pager" aria-label="게시물 이동"><button id="previous-post" type="button" class="secondary">← 이전 글</button><span id="pager-text"></span><button id="next-post" type="button" class="primary">다음 글 →</button></nav>
     </section>
   </main>
-  <p id="operation-status" class="operation-status" role="status" aria-live="polite">준비됨</p>
+  <p id="operation-status" class="operation-status" role="status" aria-live="polite" hidden></p>
   <footer><a href="../fixture/index.html" target="_blank">확장 진단 테스트</a><span>최종 게시 버튼은 직접 눌러 주세요.</span></footer>
   <script src="../shared/constants.js"></script>
   <script src="../shared/validators.js"></script>

@@ -1,0 +1,1 @@
+export function createTransferMotion(document: Document | object, options?: { reducedMotion?: () => boolean | undefined }): { play(phase: string): void; arrive(): Promise<void> | undefined; stop(): void };
