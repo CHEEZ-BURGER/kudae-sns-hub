@@ -1,5 +1,6 @@
 import type { DistributionAsset, DistributionPost } from '../types';
 import { uploadContent } from '../../extension/shared/upload-content.mjs';
+import { buildXThread } from '../../extension/shared/x-thread.mjs';
 
 export const APP_SOURCE = 'KUDAE_SNS_WORKFLOW';
 export const EXTENSION_SOURCE = 'KUDAE_SNS_EXTENSION';
@@ -22,6 +23,7 @@ export type ExtensionEvent = {
     count?: number;
     contentInserted?: boolean;
     postId?: string;
+    detail?: string;
   };
 };
 
@@ -62,9 +64,9 @@ export function buildSNSJob(post: DistributionPost, target: SNSTarget, studio = 
   if (!assets.length) throw new Error('이 글에는 전달할 원본이 없습니다.');
   if (assets.some((asset) => !extensions[asset.mimeType.toLowerCase()])) throw new Error('지원하지 않는 이미지 형식이 섞여 있습니다. 원본 다운로드를 이용해 주세요.');
   if (assets.some((asset) => asset.mimeType.startsWith(studio ? 'image/' : 'video/'))) throw new Error(studio ? 'YouTube Studio 자동 넣기는 영상만 있는 글에서 사용해 주세요.' : '영상이 포함된 글입니다. 영상은 YouTube Studio 전용 버튼 또는 원본 다운로드를 이용해 주세요.');
-  if (target === 'x' && assets.length > 4) throw new Error('X는 이미지 4장까지 받습니다. 일부만 넣고 다음 글로 넘기지 않습니다.');
   if (target === 'youtube' && assets.length > (studio ? 1 : 10)) throw new Error(studio ? 'YouTube Studio에는 영상 1개씩 넣어 주세요.' : 'YouTube 게시물에는 이미지 10장까지 넣을 수 있습니다.');
-  return { jobId:id, target, createdAt:now, ...uploadContent(post,target,studio),
+  const content=uploadContent(post,target,studio);
+  return { jobId:id, target, createdAt:now, ...content, ...(target==='x'?{xThread:buildXThread(content.caption,assets.length)}:{}),
     assets: assets.map((asset,order) => ({ order, url:asset.originalUrl, mimeType:asset.mimeType.toLowerCase(),
       filename:`${studio?'video':'card'}-${String(order+1).padStart(2,'0')}.${extensions[asset.mimeType.toLowerCase()]}` })) };
 }

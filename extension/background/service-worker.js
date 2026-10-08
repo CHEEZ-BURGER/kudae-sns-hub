@@ -1,4 +1,4 @@
-importScripts('../shared/constants.js', '../shared/validators.js', '../shared/protocol.js');
+importScripts('../shared/constants.js', '../shared/x-thread.js', '../shared/validators.js', '../shared/protocol.js');
 
 const api = globalThis.KudaeSNS;
 const controllers = new Map();
@@ -76,6 +76,7 @@ async function persistJob(checked, source) {
     updatedAt: Date.now(),
     assets: checked.value.assets,
     caption: checked.value.caption,
+    xThread: checked.value.xThread,
     contentMode: checked.value.contentMode, title: checked.value.title, body: checked.value.body, postId: checked.value.postId,
     sourceTabId: source.sourceTabId || null,
     sourceOrigin: source.sourceOrigin || null,
@@ -111,9 +112,21 @@ async function createUploadJob(rawJob, sender) {
   if (!targetTab.id) { await deleteJob(job.jobId); throw api.extensionError('TARGET_TAB_FAILED', 'SNS 탭 번호를 확인하지 못했습니다.'); }
   if (await findJobForTarget(targetTab.id)) { await deleteJob(job.jobId); throw api.extensionError('TARGET_BUSY', '이 SNS 탭에 다른 글을 전달 중입니다. 완료하거나 취소한 뒤 다시 시도해 주세요.'); }
   const readyJob = await updateJob(job.jobId, { targetTabId: targetTab.id, updatedAt: Date.now() });
-  const port = targetPorts.get(targetTab.id);
-  if (port && readyJob) void runJob(readyJob, port);
+  await relay(readyJob,api.progress(job.jobId,api.STATES.OPENING_TARGET,`${api.TARGET_LABELS[job.target]} 작성창에 연결 중입니다.`,{targetTabId:targetTab.id}));
+  if (readyJob) void connectWaitingJob(readyJob,targetTab.status==='loading');
   return job.jobId;
+}
+
+async function connectWaitingJob(job, loading=false) {
+  const port=targetPorts.get(job.targetTabId);
+  if(port) { await runJob(job,port);return; }
+  // MV3 may suspend the worker while a tab is idle. Restore its port on demand,
+  // not with permanent keepalive timers or a repeated file insertion command.
+  try {
+    const response=await chrome.tabs.sendMessage(job.targetTabId,{type:'KUDAE_RECONNECT_TARGET'});
+    if(response?.ready && response.feature==='one-click-v6')return;
+  } catch { /* A just-opened tab connects itself when its script loads. */ }
+  if(!loading) await setState(job,api.STATES.WAITING_FOR_COMPOSER,`${api.TARGET_LABELS[job.target]} 탭을 새로고침한 뒤 다시 시도해 주세요. 연결을 복구하지 못했습니다.`);
 }
 
 async function createPanelJob(rawJob, targetTabId, sender) {
@@ -127,9 +140,7 @@ async function createPanelJob(rawJob, targetTabId, sender) {
   if (await findJobForTarget(targetTabId)) throw api.extensionError('TARGET_BUSY', '이 SNS 탭에 다른 글을 전달 중입니다. 완료하거나 취소한 뒤 다시 시도해 주세요.');
   const job = await persistJob(checked, { sourcePanel: true, targetTabId });
   await setState(job, api.STATES.OPENING_TARGET, `${api.TARGET_LABELS[job.target]} 작성창에 연결 중입니다.`);
-  const port = targetPorts.get(targetTabId);
-  if (port) await runJob(job, port);
-  else await setState(job, api.STATES.WAITING_FOR_COMPOSER, `${api.TARGET_LABELS[job.target]} 탭을 새로고침한 뒤 다시 시도해 주세요.`);
+  await connectWaitingJob(job);
   return job.jobId;
 }
 
@@ -177,7 +188,7 @@ async function fetchFiles(job, signal) {
 }
 
 async function runJob(job, port) {
-  if (job.contentMode && targetCapabilities.get(job.targetTabId) !== 'one-click-v1') {
+  if (job.contentMode && targetCapabilities.get(job.targetTabId) !== 'one-click-v6') {
     await setState(job, api.STATES.WAITING_FOR_COMPOSER, `${api.TARGET_LABELS[job.target]} 페이지를 새로고침해 주세요. 최신 자동 입력 연결이 필요합니다.`); return;
   }
   if (runningJobs.has(job.jobId)) return;
@@ -185,10 +196,31 @@ async function runJob(job, port) {
   const controller = new AbortController(); controllers.set(job.jobId, controller);
   let files = [];
   try {
+    if(job.target==='x' && job.contentMode) {
+      // Read-only, fail-closed preflight: never replace an existing composer.
+      const checked=await chrome.tabs.sendMessage(job.targetTabId,{type:'KUDAE_X_PREFLIGHT',expectedCaption:job.xIntentPrepared?job.caption:null});
+      if(!checked?.ok) throw checked?.error || api.extensionError('TEXT_INPUT_NOT_FOUND','X 작성창을 확인하지 못했습니다. 새 빈 작성창에서 다시 시도해 주세요.');
+      if(job.xIntentPrepared && checked.mode!=='article') throw api.extensionError('TEXT_INSERT_FAILED','X의 제목·링크 작성창을 확인하지 못했습니다. 현재 초안을 보존합니다.');
+      if(checked.mode==='article' && !job.xIntentPrepared) {
+        // X itself initializes its DraftJS state from this normal compose URL.
+        // No synthetic text input, account API, final post, or draft save.
+        const intent=new URL('https://x.com/intent/post');intent.searchParams.set('text',job.caption);
+        const opened=await chrome.tabs.create({url:intent.href,active:true});
+        if(!opened?.id) throw api.extensionError('TARGET_TAB_FAILED','X 제목·링크 작성창을 열지 못했습니다.');
+        const next=await updateJob(job.jobId,{targetTabId:opened.id,xIntentPrepared:true,updatedAt:Date.now()});
+        runningJobs.delete(job.jobId);controllers.delete(job.jobId);
+        if(next) {
+          await setState(next,api.STATES.OPENING_TARGET,'X에서 제목·기사 링크를 준비 중입니다.',{targetTabId:opened.id});
+          await connectWaitingJob(next,opened.status==='loading');
+        }
+        return;
+      }
+      if(checked.mode==='media' && job.assets.length>4) throw api.extensionError('REPLY_LIMIT','열린 답글·인용창에는 원본 4개까지 넣습니다. 새 글 작성창에서 전체 스레드를 준비해 주세요.');
+    }
     await setState(job, api.STATES.FETCHING, `원본 준비 중 0/${job.assets.length}`, { current: 0, total: job.assets.length });
     files = await fetchFiles(job, controller.signal);
     port.postMessage({ type: 'JOB_START', jobId: job.jobId, target: job.target, total: files.length, createdAt: job.createdAt,
-      contentMode: job.contentMode, title: job.title, body: job.body, caption: job.caption, postId: job.postId });
+      contentMode: job.contentMode, title: job.title, body: job.body, caption: job.caption, postId: job.postId, xThread: job.xThread, xIntentPrepared:Boolean(job.xIntentPrepared) });
     files.forEach((file, index) => port.postMessage({ type: 'ASSET', jobId: job.jobId, index, total: files.length, file }));
     port.postMessage({ type: 'JOB_END', jobId: job.jobId, total: files.length });
     files.length = 0;
@@ -253,20 +285,22 @@ chrome.runtime.onConnect.addListener((port) => {
     }
     const job = message?.jobId ? await getJob(message.jobId) : await findJobForTarget(tabId);
     if (message?.type === 'TARGET_READY') { const pending = job || await findJobForTarget(tabId); if (pending) await runJob(pending, port); return; }
-    if (!job) return;
+    if (!job || job.targetTabId!==tabId) return;
     if (message.type === 'TARGET_CANCEL') { await cancelJob(job.jobId); return; }
     if (message.type === 'TARGET_PROGRESS') {
       await updateJob(job.jobId, { state: message.state, updatedAt: Date.now() });
       await relay(job, api.progress(job.jobId, message.state, message.userMessage, message.extra || {})); return;
     }
     if (message.type === 'TARGET_COMPLETE') {
-      if (job.contentMode && (!message.contentInserted || message.count !== job.assets.length)) {
+      const validXResult = !job.xThread || (message.xMode==='article' && message.threadCount===job.xThread.length)
+        || (message.xMode==='media' && job.assets.length<=4 && message.threadCount===1);
+      if (job.contentMode && (!message.contentInserted || message.count !== job.assets.length || !validXResult)) {
         await failJob(job, api.extensionError('TEXT_INSERT_FAILED', '이미지 또는 글 입력이 완료되지 않았습니다. 현재 글을 유지합니다.')); return;
       }
       await relay(job, api.event('SNS_UPLOAD_COMPLETE', { jobId: job.jobId, count: message.count, contentInserted: Boolean(message.contentInserted), postId: job.postId, originalRatioSelected: Boolean(message.originalRatioSelected), userMessage: message.userMessage || `원본 ${message.count}개 전달 완료` }));
       await deleteJob(job.jobId); return;
     }
-    if (message.type === 'TARGET_ERROR') await failJob(job, message.error);
+    if (message.type === 'TARGET_ERROR') { await failJob(job, message.error);port.postMessage({type:'REQUEST_READY'}); }
   });
   port.postMessage({ type: 'REQUEST_READY' });
 });

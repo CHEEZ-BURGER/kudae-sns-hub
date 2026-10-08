@@ -225,7 +225,7 @@
   function connect() {
     port = chrome.runtime.connect({ name: 'KUDAE_SNS_UPLOAD' });
     port.onMessage.addListener((message) => {
-      if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY', feature:'one-click-v1' }); return; }
+      if (message?.type === 'REQUEST_READY') { port.postMessage({ type: 'TARGET_READY', feature:'one-click-v6' }); return; }
       if (message?.type === 'JOB_START') {
         currentJobId = message.jobId;
         total = message.total;

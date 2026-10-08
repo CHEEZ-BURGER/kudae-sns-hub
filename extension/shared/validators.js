@@ -25,7 +25,6 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
     if (!api.TARGETS.includes(input.target)) return { ok: false, error: extensionError('INVALID_JOB', '지원하지 않는 SNS입니다.') };
     if (!Number.isFinite(input.createdAt) || Date.now() - input.createdAt > api.JOB_TTL_MS) return { ok: false, error: extensionError('INVALID_JOB', '업로드 요청이 만료됐습니다. 다시 시도해 주세요.') };
     if (!Array.isArray(input.assets) || input.assets.length === 0) return { ok: false, error: extensionError('NO_ASSETS', 'SNS에 전달할 파일이 없습니다.') };
-    if (input.target === 'x' && input.assets.length > 4) return { ok: false, error: extensionError('TOO_MANY_ASSETS', 'X에는 한 번에 이미지 4장까지 넣을 수 있습니다.') };
     const youtubeImages = input.target === 'youtube' && input.assets.every((asset) => imageMimeTypes.has(asset?.mimeType?.toLowerCase()));
     const youtubeVideos = input.target === 'youtube' && input.assets.every((asset) => videoMimeTypes.has(asset?.mimeType?.toLowerCase()));
     if (input.target === 'youtube' && !youtubeImages && !youtubeVideos) return { ok: false, error: extensionError('UNSUPPORTED_MIME', 'YouTube 게시물 이미지와 업로드 영상은 한 작업에 섞을 수 없습니다.') };
@@ -51,7 +50,12 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
         return { ok: false, error: extensionError('INVALID_JOB', '자동 입력할 제목과 본문을 확인해 주세요.') };
       }
     }
-    return { ok: true, value: { ...input, assets, caption: typeof input.caption === 'string' ? input.caption : '' } };
+    let xThread;
+    if(input.target==='x' && input.contentMode) {
+      try { xThread=globalThis.KudaeXThread.buildXThread(input.caption,assets.length); }
+      catch(error) { return {ok:false,error:extensionError('INVALID_THREAD',error.message || 'X 스레드를 준비할 수 없습니다. 확장을 업데이트해 주세요.')}; }
+    } else if(input.target==='x' && assets.length>4) return {ok:false,error:extensionError('TOO_MANY_ASSETS','X 스레드 자동 넣기를 사용하려면 최신 확장과 제목·본문이 필요합니다.')};
+    return { ok: true, value: { ...input, assets, xThread, caption: typeof input.caption === 'string' ? input.caption : '' } };
   }
 
   Object.assign(api, { allowedMimeTypes, imageMimeTypes, videoMimeTypes, extensionError, validAssetUrl, validateJob });

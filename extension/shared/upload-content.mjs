@@ -1,4 +1,4 @@
-import { postBody } from './post-content.mjs';
+import { postBody, postContentParts } from './post-content.mjs';
 
 export function uploadContent(post, target, studio = false) {
   const match = (post.title || '').trim().match(/^\[([^\]]+)\]\s*(.*)$/u);
@@ -8,8 +8,13 @@ export function uploadContent(post, target, studio = false) {
   const title = `[${label}] ${headline}`.trim();
   const body = postBody(post);
   const separate = ['koreapas', 'everytime'].includes(target) || (target === 'youtube' && studio);
+  // X deliberately omits manuscript paragraphs and credits. The article lives
+  // in the first text-only post; original cards follow as image-only replies.
+  const caption = target === 'x'
+    ? [title, postContentParts(post).articleUrl].filter(Boolean).join('\n\n')
+    : [title, body].filter(Boolean).join('\n\n');
   return { contentMode: separate ? 'separate' : 'caption', title, body,
-    caption: [title, body].filter(Boolean).join('\n\n'), postId: post.id || '' };
+    caption, postId: post.id || '' };
 }
 
 export function nextPostAfterTransfer(current, total, pending, event) {

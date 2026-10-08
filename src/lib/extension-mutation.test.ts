@@ -41,6 +41,11 @@ describe('SNS attachment readiness observer', () => {
     await expect(wait(() => false, 1_000, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     await window.close();
   });
+  it('DOM 변경 없이 이미지 디코딩이 끝나도 완료 상태를 감지한다',async()=>{
+    const {window,wait}=setup();let decoded=false;
+    const pending=wait(()=>decoded,1000);setTimeout(()=>{decoded=true;},20);
+    await expect(pending).resolves.toBe(true);await window.close();
+  });
 
   it('대기 중 취소와 미리보기 미확인 시간 초과를 구분한다', async () => {
     const { window, wait } = setup();

@@ -35,7 +35,7 @@ async function setup(posts = data.posts, reduced = false) {
     KudaeSNSConfig: { supabaseUrl: 'https://preview.invalid', publishableKey: 'fixture' },
     chrome: {
       storage: { session: { get: async () => ({ panelState: { link, activeIndex: 0 } }), set: async () => {}, remove: async () => {} } },
-      tabs: { query: async () => [{ id: 1, active: true, status: 'complete', url: 'https://www.facebook.com/post/create' }], sendMessage: async () => ({ feature: 'one-click-v1' }), onActivated: { addListener() {} }, onUpdated: { addListener() {} } },
+      tabs: { query: async () => [{ id: 1, active: true, status: 'complete', url: 'https://www.facebook.com/post/create' }], sendMessage: async () => ({ feature: 'one-click-v6' }), onActivated: { addListener() {} }, onUpdated: { addListener() {} } },
       runtime: { getManifest: () => ({ version: '2.3.2' }), sendMessage: async (message: typeof sent[number]) => { sent.push(message); return { accepted: true }; }, onMessage: { addListener: (listener: typeof listeners[number]) => listeners.push(listener) } },
     },
   };

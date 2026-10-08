@@ -9,7 +9,9 @@ describe('Chrome extension package contract', () => {
     const manifest = JSON.parse(read('extension/manifest.json'));
     expect(manifest.minimum_chrome_version).toBe('148');
     expect(manifest.message_serialization).toBe('structured_clone');
-    expect(manifest.version).toBe('2.3.2');
+    expect(manifest.version).toBe('2.3.7');
+    expect(read('src/components/DistributionPage.tsx')).toContain(`const expectedExtensionVersion = '${manifest.version}';`);
+    expect(read('src/components/DistributionPage.tsx')).toContain('kudae-sns-upload-helper.zip?v=${expectedExtensionVersion}');
     expect(manifest.icons['128']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.action.default_icon['32']).toBe('branding/ku-weekly-mark.png');
     expect(manifest.permissions).toEqual(['storage', 'sidePanel', 'clipboardWrite']);
@@ -22,7 +24,7 @@ describe('Chrome extension package contract', () => {
     expect(manifest.host_permissions).toContain('https://studio.youtube.com/*');
     expect(JSON.stringify(manifest)).not.toMatch(/<all_urls>|downloads|cookies|history|webRequest/);
     const appScripts = manifest.content_scripts.find((entry: { matches: string[] }) => entry.matches.some((match: string) => match.includes('kudae-sns-hub'))).js;
-    expect(appScripts).toEqual(['shared/constants.js', 'shared/validators.js', 'shared/protocol.js', 'content/app-bridge.js']);
+    expect(appScripts).toEqual(['shared/constants.js', 'shared/x-thread.js', 'shared/validators.js', 'shared/protocol.js', 'content/app-bridge.js']);
   });
 
   it('packages the KU Weekly mark as the extension and side-panel identity', () => {

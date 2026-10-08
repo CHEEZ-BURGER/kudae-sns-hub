@@ -10,6 +10,14 @@
   const inlineText = (node) => node.nodeType === 3 ? node.textContent : node.nodeName === 'BR' ? '\n' : [...node.childNodes].map(inlineText).join('');
   const read = (element) => {
     if ('value' in element) return normalize(element.value);
+    // DraftJS uses one data-block per logical line. innerText adds layout
+    // spacing between these blocks and is not a faithful manuscript reader.
+    if (element.matches('[data-testid^="tweetTextarea_"]') && element.querySelector('[data-contents="true"]')) {
+      const blocks = [...element.querySelectorAll('[data-block="true"]')];
+      if (blocks.length) return normalize(blocks.map((block) => {
+        const text = inlineText(block); return text === '\n' ? '' : text;
+      }).join('\n'));
+    }
     // innerText inserts layout-dependent blank lines between Lexical paragraphs.
     // Read only the rendered DOM's text/BR nodes, never private editor state.
     if (element.hasAttribute('data-lexical-editor') && element.children.length && [...element.children].every((child) => child.matches('p,div,h1,h2,h3,h4,h5,h6'))) {
@@ -36,14 +44,15 @@
     const selectors = {
       koreapas: { title: 'input[name="subject"],input[name="title"],input#subject', body: 'textarea[name="content"],textarea[name="memo"],textarea[name="body"],[contenteditable="true"]' },
       everytime: { title: 'input[name="title"],input[placeholder*="제목"]', body: 'textarea[name="text"],textarea[name="content"],textarea[placeholder*="내용"],[contenteditable="true"]' },
-      youtube: { title: '#title-textarea #textbox,[contenteditable="true"][aria-label*="제목"],[contenteditable="true"][aria-label*="Title"]', body: '#description-textarea #textbox,[contenteditable="true"][aria-label*="설명"],[contenteditable="true"][aria-label*="Description"]' },
+      youtube: { title: '#title-textarea #textbox,[contenteditable="true"][aria-label*="제목"],[contenteditable="true"][aria-label*="Title"]', body: 'ytd-backstage-post-dialog-renderer #contenteditable-root,ytd-backstage-post-dialog-renderer [contenteditable="true"],#description-textarea #textbox,[contenteditable="true"][aria-label*="설명"],[contenteditable="true"][aria-label*="Description"]' },
       instagram: { body: 'textarea[placeholder*="문구"],textarea[placeholder*="caption"],[contenteditable="true"][aria-label*="문구"],[contenteditable="true"][aria-label*="caption"]' },
-      facebook: { body: '[role="dialog"] [contenteditable="true"][role="textbox"],[role="dialog"] [data-lexical-editor="true"]' },
+      facebook: { body: '[role="dialog"] [contenteditable="true"][role="textbox"],[role="dialog"] [data-lexical-editor="true"],[contenteditable="true"][aria-label*="무슨 생각"],[contenteditable="true"][aria-label*="mind"]' },
     };
     const editors = documents(root).flatMap((doc) => [...doc.querySelectorAll('textarea,input[type="text"],input:not([type]),[contenteditable="true"],[contenteditable="plaintext-only"]')]).filter(visible);
-    const activeDialog = [...root.querySelectorAll('[role="dialog"]')].filter(visible).at(-1);
+    const activeDialog = [...root.querySelectorAll('[role="dialog"]')].filter(visible).filter(el=>el.querySelector('textarea,[contenteditable="true"],input[type="text"],input:not([type])')).at(-1);
+    const youtubeComposer = target === 'youtube' && mode === 'caption' ? [...root.querySelectorAll('ytd-backstage-post-dialog-renderer')].filter(visible).at(-1) : null;
     const inScope = (element) => !activeDialog || element.ownerDocument !== root || activeDialog.contains(element);
-    const candidates = editors.filter((element) => inScope(element) && !excluded.test(label(element)));
+    const candidates = editors.filter((element) => inScope(element) && (!youtubeComposer || youtubeComposer.contains(element)) && !excluded.test(label(element)));
     const score = (element, kind) => {
       const text = label(element);
       let value = kind === 'title' ? (titlePattern.test(text) ? 70 : -100) : (bodyPattern.test(text) ? 60 : 0);
@@ -87,10 +96,47 @@
     if (fields.title) assertWritable(fields.title, content.title);
   }
 
+  async function pasteXText(element, text, signal) {
+    const doc = element.ownerDocument; const view = doc.defaultView;
+    const scope = element.closest('[role="dialog"]') || doc;
+    const testId = element.getAttribute('data-testid');
+    const currentEditor = () => {
+      if (scope.nodeType !== 9 && !scope.isConnected) return null;
+      const candidates = [...scope.querySelectorAll('[contenteditable="true"][data-testid]')]
+        .filter((candidate) => visible(candidate) && candidate.getAttribute('data-testid') === testId);
+      return candidates.length === 1 ? candidates[0] : null;
+    };
+    element.focus();
+    const range = doc.createRange(); range.selectNodeContents(element);
+    const selection = doc.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    if(typeof doc.execCommand==='function') {
+      // Chromium's editing command emits native editor events. A synthetic
+      // paste may display text that X discards when adding the next post.
+      // Send ONE command, never a second text-bearing input or DOM overwrite.
+      if(!doc.execCommand('insertText',false,text)) throw api.extensionError('TEXT_INSERT_FAILED','X 편집기가 글 입력을 받지 않았습니다.','초안을 보존했습니다. 본문 복사를 사용해 주세요.');
+    } else {
+      const transfer = new view.DataTransfer(); transfer.setData('text/plain', text);
+      element.dispatchEvent(new view.ClipboardEvent('paste', {bubbles:true, cancelable:true, composed:true, clipboardData:transfer}));
+    }
+    let stable = 0;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (signal?.aborted) throw api.extensionError('USER_CANCELLED', '작업을 취소했습니다.');
+      const current = currentEditor();
+      if (current && read(current) === normalize(text)) {
+        if (++stable >= 2) return;
+      } else stable = 0;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw api.extensionError('TEXT_INSERT_FAILED', 'X의 제목·링크 입력 결과가 일치하지 않습니다.', '현재 초안을 보존했습니다. 원본 첨부는 시작하지 않았으며 같은 글을 다시 덧붙이지 않습니다.');
+  }
+
   async function writeField(element, text, signal, allowedOld = '') {
     assertWritable(element, text, allowedOld);
     if (signal?.aborted) throw api.extensionError('USER_CANCELLED', '작업을 취소했습니다.');
     if (read(element) === normalize(text)) return;
+    if (/^tweetTextarea_\d+$/.test(element.getAttribute('data-testid') || '')) {
+      return pasteXText(element, text, signal);
+    }
     const doc = element.ownerDocument;
     const view = doc.defaultView;
     element.focus();

@@ -1,5 +1,6 @@
 import { postBody } from '../shared/post-content.mjs';
 import { uploadContent, nextPostAfterTransfer } from '../shared/upload-content.mjs';
+import { buildXThread } from '../shared/x-thread.mjs';
 import { transferFeedback, transferPercent } from './transfer-feedback.mjs';
 import { createTransferMotion } from './transfer-motion.mjs';
 
@@ -121,7 +122,7 @@ import { createTransferMotion } from './transfer-motion.mjs';
     if (connected && tab?.id && tab.status === 'complete') {
       try {
         const response = await chrome.tabs.sendMessage(tab.id, { type: 'KUDAE_CONTEXT_PING' });
-        if (response?.feature !== 'one-click-v1') showRefreshGate(`${platformLabels[state.platform]} 탭에 이미지 + 글 자동 입력 기능을 적용해야 합니다.`);
+        if (response?.feature !== 'one-click-v6') showRefreshGate(`${platformLabels[state.platform]} 탭에 최신 SNS 입력 기능을 적용해야 합니다. 새로고침해 주세요.`);
       }
       catch { showRefreshGate(`${platformLabels[state.platform]} 탭에 최신 연결 기능을 적용해야 합니다.`); }
     }
@@ -149,8 +150,14 @@ import { createTransferMotion } from './transfer-motion.mjs';
       if (state.platform === 'youtube') label = state.tab?.url?.includes('studio.youtube.com') ? '영상 + 제목·설명 넣기' : 'YouTube 게시물에 이미지 + 글 넣기';
       else label = `이미지 + ${['koreapas','everytime'].includes(state.platform)?'제목·본문':'글'} 한 번에 넣기`;
       context = `${platformLabels[state.platform]} · 원본 ${count}개 · 다음 글 자동 이동`;
+        if(state.platform==='x') {
+          try { const thread=buildXThread(uploadContent(state.data.posts[state.activeIndex],'x').caption,count);
+            label='X 제목·링크 + 이미지 댓글 준비'; context=`첫 글은 제목·링크만 · 이미지 댓글 ${thread.length-1}개 · 최종 게시 직접 확인`;
+          } catch(error) { context=error.message; }
+        }
       if (state.busy) label = '원본과 글을 전달하고 있어요';
     }
+    if (state.platform==='x' && !state.busy && count) context += ' · 열린 답글·인용창은 4장까지 이미지만';
     el('inject-label').textContent = label; el('inject-context').textContent = context;
     button.setAttribute('aria-label', `${label}. ${context}`);
     document.querySelectorAll('[data-upload-target]').forEach((button) => { button.disabled = state.busy || !state.data; });
@@ -295,7 +302,7 @@ import { createTransferMotion } from './transfer-motion.mjs';
         notify(moved ? '이미지와 글을 넣었습니다. 다음 글로 이동했습니다.' : '마지막 글까지 입력했습니다. SNS에서 최종 게시해 주세요.');
       } else { showUpload('전달 결과를 확인하지 못했습니다.', '현재 글을 유지합니다. SNS 작성창을 확인해 주세요.', 0, 'ERROR'); updateUploadButton(); }
     }
-    if (type === 'SNS_UPLOAD_ERROR') { state.busy = false; state.pending = null; state.jobId = ''; showUpload(payload.userMessage || '전달하지 못했습니다.', '현재 글을 유지합니다. 작성창을 확인한 뒤 다시 시도해 주세요.', 0, 'ERROR'); updateUploadButton(); }
+      if (type === 'SNS_UPLOAD_ERROR') { state.busy = false; state.pending = null; state.jobId = ''; showUpload(payload.userMessage || '전달하지 못했습니다.', payload.detail || '다음 글로 이동하지 않았습니다. SNS 작성창을 확인해 주세요.', 0, 'ERROR'); updateUploadButton(); }
   });
 
   void (async () => {

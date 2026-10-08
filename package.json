@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node scripts/build-share-previews.mjs && npm run extension:package",
+    "build": "node scripts/build-x-thread.mjs && tsc -b && vite build && node scripts/build-share-previews.mjs && npm run extension:package",
     "extension:package": "node scripts/package-extension.mjs",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/build-x-thread.mjs && vitest run",
     "test:watch": "vitest",
     "lint": "oxlint src supabase"
   },
@@ -31,9 +31,11 @@
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",
     "@vitejs/plugin-react": "^5.0.4",
+    "esbuild": "^0.25.12",
     "happy-dom": "^20.14.5",
     "oxlint": "^1.18.0",
     "tailwindcss": "^4.1.13",
+    "twitter-text": "^3.1.0",
     "typescript": "^5.9.2",
     "vite": "^7.1.7",
     "vitest": "^3.2.4"

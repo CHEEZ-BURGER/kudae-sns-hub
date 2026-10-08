@@ -15,14 +15,22 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
       if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return; }
       const initial = test();
       if (initial) { resolve(initial); return; }
-      const observer = new MutationObserver(() => {
+      const check = () => {
         const result = test();
         if (!result) return;
         cleanup(); resolve(result);
-      });
+      };
+      const observer = new MutationObserver(check);
+      // Decoding an image or finishing an upload can change layout/state
+      // without changing a DOM attribute. A bounded poll covers that case.
+      let poll;
+      const pollNext = () => { check(); if(!settled) poll=setTimeout(pollNext,250); };
+      let settled=false;
+      poll=setTimeout(pollNext,250);
       const timeout = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, timeoutMs);
       const onAbort = () => { cleanup(); reject(new DOMException('Aborted', 'AbortError')); };
       const cleanup = () => {
+        settled=true; clearTimeout(poll);
         clearTimeout(timeout);
         observer.disconnect();
         signal?.removeEventListener('abort', onAbort);

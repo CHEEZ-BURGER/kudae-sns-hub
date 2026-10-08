@@ -14,7 +14,7 @@ async function compose(existingBody='') {
   const context:Record<string,unknown>={document:window.document,location:window.location,URL,AbortController,
     setTimeout:(callback:()=>void,delay:number)=>setTimeout(callback,Math.min(delay,5)),clearTimeout,
     HTMLInputElement:window.HTMLInputElement,DataTransfer:window.DataTransfer,File:window.File,Event:window.Event,
-    MutationObserver:window.MutationObserver,chrome:{runtime:{connect:()=>port}}};
+    MutationObserver:window.MutationObserver,chrome:{runtime:{connect:()=>port,onMessage:{addListener(){}}}}};
   for(const name of ['shared/constants.js','shared/validators.js','content/text-input.js']) runInNewContext(readFileSync(new URL(`../../extension/${name}`,import.meta.url),'utf8'),context);
   (context.KudaeSNS as any).StatusOverlay=class{update(){}complete(){}error(){}remove(){}};
   runInNewContext(readFileSync(new URL('../../extension/content/site-upload.js',import.meta.url),'utf8'),context);

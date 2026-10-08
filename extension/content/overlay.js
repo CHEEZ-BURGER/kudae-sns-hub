@@ -14,7 +14,7 @@ globalThis.KudaeSNS = globalThis.KudaeSNS || {};
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type !== 'KUDAE_CONTEXT_PING') return false;
-    sendResponse({ ready: true, feature: 'one-click-v1' });
+    sendResponse({ ready: true, feature: 'one-click-v6' });
     return false;
   });
 })();

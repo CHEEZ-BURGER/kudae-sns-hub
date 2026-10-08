@@ -19,10 +19,16 @@ describe('한 번에 글과 원본 전달',()=>{
   it('분리형 에타/Studio와 통합형 Facebook/Instagram/X/YouTube를 구분한다',()=>{
     expect(uploadContent(post,'everytime').contentMode).toBe('separate');
     expect(uploadContent(post,'youtube',true).contentMode).toBe('separate');
-    for(const target of ['instagram','facebook','x','youtube']) {
+    for(const target of ['instagram','facebook','youtube']) {
       expect(uploadContent(post,target).caption).toMatch(/^\[보도\] 탄소중립 과제\n\n기사 본문/);
       expect(uploadContent(post,target).contentMode).toBe('caption');
     }
+    expect(uploadContent(post,'x').caption).toBe('[보도] 탄소중립 과제\n\n'+post.articleUrl);
+    expect(uploadContent(post,'x').caption).not.toContain('글 | 기자');
+  });
+  it('X는 본문 안 기사 URL도 찾아 제목과 링크만 보내며 URL 없는 글은 제목만 보낸다',()=>{
+    expect(uploadContent({...post,articleUrl:'',body:'긴 본문\n\n'+post.articleUrl+'\n글 | 기자'},'x').caption).toBe('[보도] 탄소중립 과제\n\n'+post.articleUrl);
+    expect(uploadContent({...post,articleUrl:'',body:'긴 본문\n글 | 기자'},'x').caption).toBe('[보도] 탄소중립 과제');
   });
   it('원본 URL, 파일 수와 글 식별자를 유지한다',()=>{
     const job=buildSNSJob(post,'facebook');
@@ -31,7 +37,8 @@ describe('한 번에 글과 원본 전달',()=>{
     expect(job.caption).toContain('글 | 기자');
   });
   it('플랫폼 한도를 넘는 파일이나 혼합 미디어를 조용히 누락하지 않는다',()=>{
-    expect(()=>buildSNSJob({...post,assets:Array(5).fill(post.assets[0])},'x')).toThrow('4장');
+    const x=buildSNSJob({...post,assets:Array(5).fill(post.assets[0])},'x');
+    expect(x.assets).toHaveLength(5); expect(x.xThread?.flatMap(part=>part.assetOrders)).toEqual([0,1,2,3,4]);
     expect(()=>buildSNSJob({...post,assets:Array(11).fill(post.assets[0])},'youtube')).toThrow('10장');
     expect(()=>buildSNSJob({...post,assets:[...post.assets,{...post.assets[0],mimeType:'video/mp4'}]},'facebook')).toThrow('영상');
   });

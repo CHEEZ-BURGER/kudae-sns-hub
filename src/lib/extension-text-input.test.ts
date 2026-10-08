@@ -19,6 +19,27 @@ function renderedText(window:Window, editor:HappyElement) {
   Object.defineProperty(editor,'innerText',{get:()=>[...editor.childNodes].map(node=>node.nodeName==='BR'?'\n':node.textContent).join(''),set:(text:string)=>setter.call(editor,text)});
 }
 describe('SNS 표준 DOM 제목·본문 입력',()=>{
+  it('X DraftJS 줄 블록은 렌더링 여백 대신 실제 제목·빈 줄·링크로 읽는다',()=>{
+    const {window,api}=setup('<div contenteditable="true" data-testid="tweetTextarea_0"><div data-contents="true"><div data-block="true"><div><span>[보도] 제목</span></div></div><div data-block="true"><div><br data-text="true"></div></div><div data-block="true"><div><span>https://www.kunews.ac.kr/</span></div></div></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[contenteditable]')!;
+    Object.defineProperty(editor,'innerText',{get:()=>'[보도] 제목\n\n\nhttps://www.kunews.ac.kr/'});
+    expect(api.readTextField(editor)).toBe('[보도] 제목\n\nhttps://www.kunews.ac.kr/');
+  });
+  it('네이티브 편집 명령이 없는 X 환경에서는 한 번의 paste 후 교체된 편집기를 재확인한다',async()=>{
+    const {window,api,signal}=setup('<div role="dialog"><div contenteditable="true" data-testid="tweetTextarea_0"><div data-contents="true"><div data-block="true"><br></div></div></div></div>');
+    const editor=window.document.querySelector<HappyElement>('[contenteditable]')!;
+    const text='[보도] 제목\n\nhttps://www.kunews.ac.kr/';let pastes=0;
+    (window.document as any).execCommand=undefined;
+    editor.addEventListener('paste',event=>{
+      pastes++;event.preventDefault();const incoming=(event as any).clipboardData.getData('text/plain');
+      const replacement=editor.cloneNode(false) as HappyElement;const contents=window.document.createElement('div');contents.setAttribute('data-contents','true');
+      for(const line of incoming.split('\n')){const block=window.document.createElement('div');block.setAttribute('data-block','true');block.textContent=line;if(!line)block.append(window.document.createElement('br'));contents.append(block);}
+      replacement.append(contents);editor.replaceWith(replacement);
+    });
+    await api.writeTextField(editor,text,signal);
+    expect(pastes).toBe(1);expect(editor.isConnected).toBe(false);
+    expect(api.readTextField(window.document.querySelector<HappyElement>('[contenteditable]')!)).toBe(text);
+  });
   it('고파스 subject/content 입력칸에 네이티브 값과 이벤트를 전달한다',async()=>{
     const {window,api,signal}=setup('<form><input name="subject"><textarea name="content"></textarea><input type="file" multiple></form>');
     const title=window.document.querySelector('input')!; const body=window.document.querySelector('textarea')!;
